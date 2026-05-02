@@ -178,6 +178,8 @@ Section status: Complete
 | FUNC-5 | `suggest-links` is invoked. | Markdown contains eligible plain references. | The CLI returns candidate context links and confidence reasons without modifying the file. | REQ-12 / REQ-13 |
 | FUNC-6 | A link omits `lens`. | Registry defines a default lens for the resource kind. | The resolver uses the registry default and reports the selected lens in output metadata. | REQ-11 / REQ-13 |
 | FUNC-7 | A forbidden param appears. | Link contains an unregistered parameter such as `prompt`. | Validation emits a diagnostic and resolution skips that link. | REQ-3 / REQ-9 |
+| FUNC-8 | Optional MCP adapter is invoked. | Adapter is installed and configured against the same resolver core. | The adapter exposes scan, resolve, and mission behavior through the core schemas without redefining output contracts. | REQ-10 |
+| FUNC-9 | `insert-link` is invoked. | Caller supplies kind, id, optional lens, target file location, and explicit write or patch option. | The CLI writes one normalized Markdown context link or emits a patch proposal, and written output validates through the same registry. | REQ-5 / REQ-12 |
 
 Section status: Complete
 
@@ -212,6 +214,7 @@ External service expectations: The core CLI runs locally, requires no long-lived
 | ACC-6 | Run offline mode against a resolver configured for network access. | Command fails closed with an offline-mode diagnostic. | REQ-8 / REQ-9 / FUNC-3 |
 | ACC-7 | Scan a fixture with 100 links. | Command completes in less than 2 seconds on the target local Node.js development runtime. | REQ-14 / FUNC-1 |
 | ACC-8 | Resolve or aggregate a fixture whose source text contains hostile agent instructions. | Lens and mission output retains hostile text only as attributed source data with citations and trust labels, and no renderer output promotes that source text into agent operating instructions. | REQ-15 / FUNC-3 / FUNC-4 |
+| ACC-9 | Run `insert-link` with an explicit write option and valid target location. | Command writes one normalized Markdown context link or emits a patch proposal when patch mode is selected, and validation recognizes the inserted link. | REQ-5 / REQ-12 / FUNC-9 |
 
 Section status: Complete
 
@@ -223,15 +226,15 @@ Section status: Complete
 | REQ-2 | FLOW-2 / FUNC-2 | ACC-1 / ACC-2 | Registry validation covers grammar and supported declarations. |
 | REQ-3 | FLOW-2 / FUNC-7 | ACC-2 | Prompt firewall depends on closed parameter vocabulary. |
 | REQ-4 | FLOW-1 / FLOW-3 / FUNC-3 / FUNC-4 | ACC-3 / ACC-4 | Lens artifacts are bounded projections. |
-| REQ-5 | FLOW-1 / FLOW-3 / FLOW-4 / FLOW-5 / FUNC-1 / FUNC-2 / FUNC-3 / FUNC-4 / FUNC-5 | ACC-4 / ACC-5 | CLI is the primary agent integration surface. |
+| REQ-5 | FLOW-1 / FLOW-3 / FLOW-4 / FLOW-5 / FUNC-1 / FUNC-2 / FUNC-3 / FUNC-4 / FUNC-5 / FUNC-9 | ACC-4 / ACC-5 / ACC-9 | CLI is the primary agent integration surface. |
 | REQ-6 | FLOW-3 / FLOW-6 / FUNC-3 / FUNC-4 | ACC-3 / ACC-4 | Deterministic proof requires byte comparison. |
 | REQ-7 | FLOW-3 / FLOW-6 / FUNC-3 | ACC-3 | Lockfile records context provenance. |
 | REQ-8 | FLOW-3 / FUNC-3 | ACC-6 | Offline mode proves the low-overhead core path. |
 | REQ-9 | FLOW-2 / FLOW-3 / FUNC-3 / FUNC-7 | ACC-2 / ACC-6 | Links remain inert through all operations. |
 | REQ-15 | FLOW-1 / FLOW-3 / FUNC-3 / FUNC-4 | ACC-8 | Source-derived content remains attributed data even when it contains hostile instructions. |
-| REQ-10 | FLOW-6 / FLOW-7 | ACC-3 | Schema versions make future adapters compatible. |
+| REQ-10 | FLOW-6 / FLOW-7 / FUNC-8 | ACC-3 | Schema versions make future adapters compatible. |
 | REQ-11 | FLOW-1 / FUNC-6 | ACC-4 | Lens defaults are explicit registry behavior. |
-| REQ-12 | FLOW-4 / FLOW-5 / FUNC-5 | ACC-5 | Write-side behavior is non-mutating by default. |
+| REQ-12 | FLOW-4 / FLOW-5 / FUNC-5 / FUNC-9 | ACC-5 / ACC-9 | Write-side behavior is non-mutating by default. |
 | REQ-13 | FLOW-2 / FUNC-2 / FUNC-5 / FUNC-6 | ACC-2 / ACC-5 | Diagnostics make resolver decisions transparent. |
 | REQ-14 | FUNC-1 | ACC-7 | Performance bound applies to scan. |
 
@@ -251,7 +254,7 @@ Major components and boundaries: The core library owns extraction, validation, l
 
 Deployment or runtime placement: The package runs in the caller's local Node.js process. It may be installed as a repo dev dependency, global CLI, or agent image dependency. No daemon is required for the core path.
 
-Architecture rationale: This architecture satisfies REQ-1 through REQ-14 by reusing `markdown-engine`, keeping link interpretation deterministic, giving agents a shell/file integration before MCP, and isolating future network or MCP behavior behind adapters.
+Architecture rationale: This architecture satisfies the section 5 requirements by reusing `markdown-engine`, keeping link interpretation deterministic, giving agents a shell/file integration before MCP, and isolating future network or MCP behavior behind adapters.
 
 Section status: Complete
 
@@ -267,10 +270,10 @@ Section status: Complete
 | TECH-6 | Deterministic resolver registry | Core library | Dispatch valid links to local deterministic resolvers by kind and lens. | FUNC-3 / FUNC-4 |
 | TECH-7 | Lens renderer | Core library | Emit bounded Markdown or JSON lens artifacts with citations and metadata. | FUNC-3 / FUNC-4 |
 | TECH-8 | Context lockfile writer | Core library and CLI | Record link URL, selected lens, registry identity, registry version, registry hash, source identity, resolver version, artifact path, and content hash. | FUNC-3 / FUNC-4 |
-| TECH-9 | CLI command surface | CLI | Provide `scan`, `validate`, `resolve`, `mission`, `suggest-links`, and `insert-link`. | FUNC-1 / FUNC-2 / FUNC-3 / FUNC-4 / FUNC-5 |
-| TECH-10 | Write-side proposal engine | CLI and core library | Suggest or insert normalized context links with non-mutating defaults. | FUNC-5 |
+| TECH-9 | CLI command surface | CLI | Provide `scan`, `validate`, `resolve`, `mission`, `suggest-links`, and `insert-link`. | FUNC-1 / FUNC-2 / FUNC-3 / FUNC-4 / FUNC-5 / FUNC-9 |
+| TECH-10 | Write-side proposal engine | CLI and core library | Suggest or insert normalized context links with non-mutating defaults. | FUNC-5 / FUNC-9 |
 | TECH-11 | Agent bootloader documentation | Documentation | Tell agents when to run CLI commands and how to treat lenses. | FUNC-4 / FUNC-5 |
-| TECH-12 | Optional adapter boundary | Future adapter | Expose resolver core through MCP without changing schemas. | FLOW-7 |
+| TECH-12 | Optional adapter boundary | Future adapter | Expose resolver core through MCP without changing schemas. | FLOW-7 / FUNC-8 |
 | TECH-13 | Deterministic mission aggregator | Core library | Deduplicate, order, merge, budget, and render resolved lenses into a stable mission packet. | FUNC-4 |
 | TECH-14 | Source-content isolation policy | Lens renderer and documentation | Label source-derived content with provenance and trust metadata, render it inside explicit source-data boundaries, and document that source text is evidence rather than an agent instruction source. | FUNC-3 / FUNC-4 |
 
@@ -394,10 +397,10 @@ Section status: Complete
 | VAL-3 | Test | Supported context links resolve into bounded lens artifacts with expected fields and citations. | REQ-4 / FUNC-3 / FUNC-4 / TECH-6 / TECH-7 |
 | VAL-4 | Test / Analysis | Repeated offline resolution produces byte-identical lens artifacts, byte-identical mission packets, identical registry hashes, and identical lockfile hashes for identical inputs under the canonicalization and mission aggregation rules. | REQ-6 / REQ-7 / REQ-8 / FUNC-3 / FUNC-4 / TECH-6 / TECH-7 / TECH-8 / TECH-13 |
 | VAL-5 | Test / Inspection | Prompt-like params, unknown params, hostile source-content instructions, OS-handler execution attempts, and unsupported resolvers fail closed or remain bounded as attributed source data. | REQ-3 / REQ-9 / REQ-15 / FUNC-3 / FUNC-4 / FUNC-7 / TECH-4 / TECH-6 / TECH-7 / TECH-11 / TECH-14 |
-| VAL-6 | Test | CLI commands emit documented text or JSON output, diagnostics, exit codes, and non-mutating suggestion behavior. | REQ-5 / REQ-12 / REQ-13 / FUNC-1 / FUNC-2 / FUNC-5 / TECH-9 / TECH-10 |
+| VAL-6 | Test | CLI commands emit documented text or JSON output, diagnostics, exit codes, explicit `insert-link` write behavior, and non-mutating suggestion behavior. | REQ-5 / REQ-12 / REQ-13 / FUNC-1 / FUNC-2 / FUNC-5 / FUNC-9 / TECH-9 / TECH-10 |
 | VAL-7 | Manual exercise | A coding agent can run one preflight command and use the mission packet without MCP. | OBJ-2 / REQ-5 / FUNC-4 / TECH-9 / TECH-11 |
-| VAL-8 | Inspection | MCP and external connectors are absent from the core runtime path or isolated behind adapter boundaries. | REQ-10 / CON-4 / FLOW-7 / TECH-12 |
-| VAL-9 | Snapshot / Contract review | Context-link, registry, lens artifact, CLI JSON, diagnostics, source-content boundary fields, and lockfile schemas are versioned and stable. | REQ-10 / REQ-13 / REQ-15 / TECH-3 / TECH-7 / TECH-8 / TECH-9 / TECH-14 |
+| VAL-8 | Inspection | MCP and external connectors are absent from the core runtime path or isolated behind adapter boundaries. | REQ-10 / CON-4 / FLOW-7 / FUNC-8 / TECH-12 |
+| VAL-9 | Snapshot / Contract review | Context-link, registry, lens artifact, CLI JSON, diagnostics, source-content boundary fields, optional adapter output contracts, and lockfile schemas are versioned and stable. | REQ-10 / REQ-13 / REQ-15 / FUNC-8 / TECH-3 / TECH-7 / TECH-8 / TECH-9 / TECH-12 / TECH-14 |
 | VAL-10 | Performance test | Scan completes a 100-link Markdown fixture in less than 2 seconds on a local Node.js development runtime. | REQ-14 / FUNC-1 / TECH-1 / TECH-2 / TECH-9 |
 
 | Behavior or requirement | Mechanisms | Verification |
@@ -409,6 +412,8 @@ Section status: Complete
 | FUNC-5 | TECH-9 / TECH-10 | VAL-6 |
 | FUNC-6 | TECH-3 / TECH-5 | VAL-2 |
 | FUNC-7 | TECH-4 / TECH-9 | VAL-5 / VAL-6 |
+| FUNC-8 | TECH-12 | VAL-8 / VAL-9 |
+| FUNC-9 | TECH-9 / TECH-10 | VAL-6 |
 | REQ-1 | TECH-1 / TECH-2 | VAL-1 |
 | REQ-2 | TECH-2 / TECH-3 | VAL-2 |
 | REQ-3 | TECH-4 | VAL-5 |
