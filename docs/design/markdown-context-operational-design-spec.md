@@ -215,6 +215,7 @@ External service expectations: The core CLI runs locally, requires no long-lived
 | ACC-7 | Scan a fixture with 100 links. | Command completes in less than 2 seconds on the target local Node.js development runtime. | REQ-14 / FUNC-1 |
 | ACC-8 | Resolve or aggregate a fixture whose source text contains hostile agent instructions. | Lens and mission output retains hostile text only as attributed source data with citations and trust labels, and no renderer output promotes that source text into agent operating instructions. | REQ-15 / FUNC-3 / FUNC-4 |
 | ACC-9 | Run `insert-link` with an explicit write option and valid target location. | Command writes one normalized Markdown context link or emits a patch proposal when patch mode is selected, and validation recognizes the inserted link. | REQ-5 / REQ-12 / FUNC-9 |
+| ACC-10 | Run an optional MCP adapter contract fixture against scan, resolve, and mission behavior. | Adapter responses use the same core schema versions, field contracts, diagnostics shape, and output semantics as CLI/core outputs without introducing MCP-only schema drift. | REQ-10 / FLOW-7 / FUNC-8 |
 
 Section status: Complete
 
@@ -232,7 +233,7 @@ Section status: Complete
 | REQ-8 | FLOW-3 / FUNC-3 | ACC-6 | Offline mode proves the low-overhead core path. |
 | REQ-9 | FLOW-2 / FLOW-3 / FUNC-3 / FUNC-7 | ACC-2 / ACC-6 | Links remain inert through all operations. |
 | REQ-15 | FLOW-1 / FLOW-3 / FUNC-3 / FUNC-4 | ACC-8 | Source-derived content remains attributed data even when it contains hostile instructions. |
-| REQ-10 | FLOW-6 / FLOW-7 / FUNC-8 | ACC-3 | Schema versions make future adapters compatible. |
+| REQ-10 | FLOW-6 / FLOW-7 / FUNC-8 | ACC-3 / ACC-10 | Schema versions make future adapters compatible. |
 | REQ-11 | FLOW-1 / FUNC-6 | ACC-4 | Lens defaults are explicit registry behavior. |
 | REQ-12 | FLOW-4 / FLOW-5 / FUNC-5 / FUNC-9 | ACC-5 / ACC-9 | Write-side behavior is non-mutating by default. |
 | REQ-13 | FLOW-2 / FUNC-2 / FUNC-5 / FUNC-6 | ACC-2 / ACC-5 | Diagnostics make resolver decisions transparent. |
