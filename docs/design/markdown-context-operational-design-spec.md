@@ -14,7 +14,7 @@
 | Target milestone or release | `markdown-context` initial implementation approval |
 | Last updated | 2026-05-14 |
 | Related docs | `RUNTIME_ARCHITECTURE.md`, `docs/design/markdown-engine-operational-design-spec.md`, `docs/contracts/api.md` |
-| Related tickets | Not yet assigned |
+| Related tickets | Not yet assigned; create the `markdown-context` MVP implementation issue before starting code |
 
 ## 0. Executive Summary
 
@@ -42,9 +42,9 @@ Problem declaration: Coding agents and agent operators are unable to retrieve bo
 
 Affected actors or systems: Codex, Claude, other coding agents, repository maintainers, review agents, CI jobs, future `markdown-runtime`, future `markdown-mcp`, and humans authoring task, handoff, review, and design Markdown.
 
-Current-state baseline: As of 2026-05-01, `markdown-engine` has 1 deterministic link scheme rule, 0 context-link extraction APIs, 0 lens resolver commands, 0 context lockfile format, and 0 write-side helpers for inserting or validating context links.
+Current-state baseline: As of 2026-05-14, `markdown-engine` has public `linkReferences` extraction for URL-bearing Markdown constructs. `markdown-context` itself has 0 package scaffold, 0 CLI commands, 0 context-link registry, 0 resolvers, 0 lens artifacts, 0 context lockfile format, and 0 write-side helpers for inserting or validating context links.
 
-Evidence or source: Direct repository inspection of `src/rules/links-allowed-schemes.ts`, `docs/contracts/api.md`, and `RUNTIME_ARCHITECTURE.md` during design authoring on 2026-05-01.
+Evidence or source: Direct repository inspection of `markdown-context` during design review on 2026-05-14, plus `markdown-engine` PR #104 adding public `linkReferences` extraction.
 
 Consequence of inaction: Before the first `markdown-context` implementation begins, teams will keep encoding context as prose, raw URLs, or manual MCP calls, causing every agent workflow to rediscover context rules independently and making agent context use difficult to verify.
 
@@ -57,9 +57,9 @@ Section status: Complete
 | ID | Statement | Measurement or decision horizon |
 | --- | --- | --- |
 | OBJ-1 | Provide a portable context-link contract for Markdown documents that identifies resource kind, identifier, lens request, and allowed parameters. | Initial implementation review |
-| OBJ-2 | Provide a CLI-first resolver workflow that coding agents can use through shell commands and repository files. | Initial CLI milestone |
+| OBJ-2 | Provide a CLI-first resolver workflow that coding agents can use through shell commands and repository files, beginning with `scan`, `validate`, and one local `resolve` path. | Initial CLI milestone |
 | OBJ-3 | Produce deterministic lens artifacts and lockfiles that record what context an agent received. | Deterministic proof milestone |
-| OBJ-4 | Support write-side workflows so agents can create, suggest, insert, and validate context links in task, handoff, PR, and design documents. | Write-side milestone |
+| OBJ-4 | Support later write-side workflows so agents can create, suggest, insert, and validate context links in task, handoff, PR, and design documents. | Write-side milestone after read-side MVP |
 | OBJ-5 | Preserve an optional path to MCP without making MCP the primary integration dependency. | Adapter review milestone |
 | NG-1 | The initial project will not execute context links, open OS protocol handlers, or dispatch application commands. | Initial implementation review |
 | NG-2 | The initial project will not allow free-form prompt text in link parameters. | Security review |
@@ -94,6 +94,8 @@ Section status: Complete
 | CON-5 | Invariant | The resolver shall record enough source and resolver identity to audit the context given to an agent. | Supports reproducibility and review. | Validate lockfile shape and content hashes in VAL-4. |
 | CON-6 | Constraint | The initial implementation shall not open OS protocol handlers from Markdown content. | Prevents link execution from crossing a trust boundary. | Validate with misuse tests and code review in VAL-5. |
 | CON-7 | Invariant | Source-derived lens and mission content shall be rendered as attributed data, not as agent operating instructions. | Prevents resolved content from crossing the instruction/data boundary. | Validate with hostile-source fixtures in VAL-5. |
+| CON-8 | Constraint | The initial context-link scheme shall be `ctx://`. | Removes scheme ambiguity before registry fixtures and CLI parsing begin. | Validate through grammar fixtures and ACC-1. |
+| CON-9 | Constraint | The first deterministic resolver shall support local repository paths through the `repo/path` namespace and kind. | Proves offline resolution without requiring Linear, GitHub, browser, or network connectors. | Validate through ACC-3 and VAL-4. |
 | ASM-1 | Assumption | TypeScript on Node.js remains acceptable for `markdown-context`. | Matches `markdown-engine` and agent CLI ecosystem. | Confirm during scaffold; if false, revise section 12 before implementation. |
 | ASM-2 | Assumption | Coding agents can reliably run a local CLI or read generated repository files. | Codex and Claude workflows commonly support shell or file access. | Validate through manual agent preflight exercise in VAL-7. |
 | ASM-3 | Assumption | Useful initial lenses can be generated from deterministic local sources such as files, docs, and checked-in metadata. | Enables an offline MVP without connector complexity. | Validate through local-source lens fixtures in VAL-4. |
@@ -108,17 +110,18 @@ Section status: Complete
 | REQ-2 | Functional | Must | The system shall validate context-link URL grammar against a versioned registry. | Resource kinds, identifiers, lenses, and parameters need deterministic validation. | VAL-2 |
 | REQ-3 | Functional | Must | The system shall reject link parameters outside the registry vocabulary. | Prevents hidden prompt instructions and unsupported behavior. | VAL-5 |
 | REQ-4 | Functional | Must | The system shall resolve supported context links into bounded lens artifacts. | Agents need compact context packets instead of raw source dumps. | VAL-3 / VAL-4 |
-| REQ-5 | Functional | Must | The system shall provide CLI commands for scan, validate, resolve, mission, suggest-links, and insert-link operations. | Agents and humans need the same low-overhead interface. | VAL-6 |
-| REQ-6 | Reliability | Must | The system shall produce byte-identical deterministic lens and mission output for identical input files, registry config, resolver version, and command options. | Deterministic resolution is the central verification proof. | VAL-4 |
+| REQ-5 | Functional | Must | The system shall provide read-side MVP CLI commands for `scan`, `validate`, and `resolve` operations. | Agents and humans need the same low-overhead interface before optional adapters or write-side helpers. | VAL-6 |
+| REQ-6 | Reliability | Must | The system shall produce byte-identical deterministic lens output for identical input files, registry config, resolver version, and command options. | Deterministic resolution is the central verification proof for the read-side MVP. | VAL-4 |
 | REQ-7 | Reliability | Must | The system shall emit a context lockfile for resolved links with link URL, lens id, registry identity, registry version, registry hash, source identity, resolver version, and content hash. | Reviewers need to know what context an agent actually received and which registry contract produced it. | VAL-4 |
 | REQ-8 | Operability | Must | The system shall support offline local-file resolution when resolver config declares offline mode. | Agent workflows must not depend on live network tools for the core path. | VAL-4 |
 | REQ-9 | Security | Must | The system shall treat context links as inert data during scan, validation, resolution, and write operations. | Prevents Markdown from triggering commands, apps, network calls, or handlers. | VAL-5 |
 | REQ-15 | Security | Must | The system shall preserve an explicit instruction/data boundary by marking source-derived lens and mission content as attributed data that cannot override caller, system, developer, or agent operating instructions. | Agents consume generated artifacts directly, so hostile source text must remain evidence rather than executable instruction. | VAL-5 / VAL-9 |
 | REQ-10 | Compatibility | Must | The system shall version the context-link grammar, registry schema, lens artifact schema, CLI JSON output, and lockfile schema. | Consumers need stable contracts. | VAL-9 |
 | REQ-11 | Functional | Should | The system shall choose a default lens from the registry when a link omits the lens parameter. | Authors should not need to over-specify common context needs. | VAL-2 / VAL-3 |
-| REQ-12 | Functional | Should | The system shall suggest context links for eligible references in Markdown without modifying files by default. | Agents need write-side assistance that remains reviewable. | VAL-6 |
+| REQ-12 | Functional | Should | The system shall support later write-side `suggest-links` and `insert-link` workflows without modifying files by default. | Agents need write-side assistance that remains reviewable after read-side behavior is stable. | VAL-6 |
 | REQ-13 | Operability | Should | The system shall expose resolver decisions in machine-readable diagnostics. | Agents, CI, and reviewers need transparent failures. | VAL-6 / VAL-9 |
 | REQ-14 | Performance | Could | The system shall scan a Markdown document containing 100 links in less than 2 seconds on a local Node.js development runtime. | The preflight path should stay cheap enough for agent use. | VAL-10 |
+| REQ-16 | Functional | Should | The system shall aggregate resolved lenses into a deterministic `mission` packet after the read-side MVP proves `scan`, `validate`, and `resolve`. | Mission packets are valuable for agents but should not expand the first implementation slice. | VAL-4 / VAL-7 |
 
 Section status: Complete
 
@@ -126,10 +129,10 @@ Section status: Complete
 
 | Measure | Baseline | Target or decision threshold | Evaluation date or decision event | Related IDs |
 | --- | --- | --- | --- | --- |
-| Context-link extraction coverage | 0 extraction helpers on 2026-05-01 | CLI `scan` identifies context links from `markdown-engine` `linkReferences` fixtures covering inline links, images, definitions, link reference usages, and image reference usages. | Initial implementation review | OBJ-1 / REQ-1 |
-| Deterministic resolution proof | 0 lockfile or deterministic lens proof on 2026-05-01 | Repeated `mission` runs produce byte-identical lenses, byte-identical mission packets, identical registry hashes, and identical lockfile hashes for fixture inputs. | Deterministic proof milestone | OBJ-3 / REQ-6 / REQ-7 |
-| Agent preflight usability | Agents currently rely on prose instructions or manual URL resolution. | Codex-style shell workflow can run one command and receive a mission packet with citations. | Agent workflow exercise | OBJ-2 / REQ-5 |
-| Write-side safety | 0 suggestion or insert helpers on 2026-05-01 | `suggest-links` produces a reviewable patch or JSON proposal without mutating files by default. | Write-side milestone | OBJ-4 / REQ-12 |
+| Context-link extraction coverage | 0 `markdown-context` extraction helpers on 2026-05-14 | CLI `scan` identifies context links from `markdown-engine` `linkReferences` fixtures covering inline links, images, definitions, link reference usages, and image reference usages. | Initial implementation review | OBJ-1 / REQ-1 |
+| Deterministic resolution proof | 0 `markdown-context` lockfile or deterministic lens proof on 2026-05-14 | Repeated `resolve` runs for `ctx://repo/path/...` links produce byte-identical lenses, identical registry hashes, and identical lockfile hashes for fixture inputs. | Read-side MVP milestone | OBJ-3 / REQ-4 / REQ-6 / REQ-7 |
+| Agent preflight usability | Agents currently rely on prose instructions or manual URL resolution. | Codex-style shell workflow can run `scan`, `validate`, and `resolve` locally against a Markdown task file and inspect the resulting lens artifact with citations. | Agent workflow exercise | OBJ-2 / REQ-5 |
+| Write-side safety | 0 suggestion or insert helpers on 2026-05-14 | Later `suggest-links` produces a reviewable patch or JSON proposal without mutating files by default. | Write-side milestone after read-side MVP | OBJ-4 / REQ-12 |
 | Stop threshold | No stop threshold exists today. | Stop core implementation if deterministic local resolution cannot be proven without network or LLM calls for at least one useful lens type. | Before first release candidate | OBJ-3 / REQ-6 / REQ-8 |
 
 Section status: Complete
@@ -142,7 +145,7 @@ Layer 1 status: Complete
 
 ## 7. System Context and External Interfaces
 
-System boundary: `markdown-context` is a local library and CLI that scans Markdown through `markdown-engine`, validates context links against a registry, resolves supported links into lens artifacts, writes lockfiles, and optionally proposes link edits. It does not require a daemon, MCP server, OS handler, browser runtime, or network connector for the core path.
+System boundary: `markdown-context` is a local library and CLI that scans Markdown through `markdown-engine`, validates `ctx://` context links against a registry, resolves supported links into lens artifacts, writes lockfiles, and optionally proposes link edits in later milestones. The read-side MVP includes `scan`, `validate`, and `resolve` for offline `repo/path` links. It does not require a daemon, MCP server, OS handler, browser runtime, or network connector for the core path.
 
 External actors and systems: Coding agents, humans, CI jobs, repository files, `markdown-engine`, local file system, resolver registry config, optional future MCP adapter, optional future external-source adapters.
 
@@ -164,22 +167,22 @@ Section status: Complete
 
 | ID | Trigger | Preconditions | Behavior or outcome | Related requirements |
 | --- | --- | --- | --- | --- |
-| FLOW-1 | Agent starts work from a task Markdown file. | File contains zero or more `ctx://` links and a registry is available. | The agent runs `markdown-context mission <file>` and receives a bounded mission packet plus diagnostics. | REQ-1 / REQ-2 / REQ-4 / REQ-5 |
+| FLOW-1 | Agent starts work from a task Markdown file. | File contains zero or more `ctx://` links and a registry is available. | During the read-side MVP, the agent runs `scan`, `validate`, and `resolve` to inspect bounded lens artifacts; after the mission milestone, the agent may run `markdown-context mission <file>` and receive an aggregated mission packet plus diagnostics. | REQ-1 / REQ-2 / REQ-4 / REQ-5 / REQ-16 |
 | FLOW-2 | Agent or CI validates a Markdown file. | File contains context links and command uses a registry. | The command reports invalid schemes, kinds, identifiers, lenses, or parameters without resolving rejected links. | REQ-2 / REQ-3 / REQ-9 |
 | FLOW-3 | Agent resolves one context link directly. | Link is valid and supported by a deterministic resolver. | The command emits one lens artifact and records lockfile data when requested. | REQ-4 / REQ-6 / REQ-7 |
-| FLOW-4 | Agent prepares a handoff or PR description. | Markdown contains plain references or existing context links. | The agent runs `suggest-links` and receives candidate context links without file mutation by default. | REQ-5 / REQ-12 |
-| FLOW-5 | Agent inserts an approved context link. | Caller supplies kind, id, optional lens, and target file location. | The command writes a normalized Markdown link or emits a patch proposal based on options. | REQ-5 / REQ-12 |
+| FLOW-4 | Agent prepares a handoff or PR description. | Markdown contains plain references or existing context links and the later write-side milestone is in scope. | The agent runs `suggest-links` and receives candidate context links without file mutation by default. | REQ-12 |
+| FLOW-5 | Agent inserts an approved context link. | Caller supplies kind, id, optional lens, target file location, and the later write-side milestone is in scope. | The command writes a normalized Markdown link or emits a patch proposal based on options. | REQ-12 |
 | FLOW-6 | Reviewer audits what context an agent used. | Lens artifacts and lockfile exist. | The reviewer compares lockfile records, registry identity, hashes, resolver version, and source identity against the committed artifact. | REQ-6 / REQ-7 / REQ-10 |
 | FLOW-7 | MCP is available in an agent runtime. | Optional adapter is installed and points at the same resolver core. | MCP tools expose the same scan and resolve behavior as the CLI without redefining schemas. | REQ-10 / REQ-13 |
 | FUNC-1 | `scan` is invoked. | Markdown input parses through `markdown-engine`. | The CLI returns discovered context links with label, URL, source range, scheme, kind, id, lens request, and params. | REQ-1 / REQ-5 |
 | FUNC-2 | `validate` is invoked. | A registry config is loaded. | The CLI returns deterministic diagnostics for invalid context links and unsupported registry declarations. | REQ-2 / REQ-3 / REQ-13 |
 | FUNC-3 | `resolve` is invoked. | A valid context link maps to a supported resolver. | The CLI returns the requested or default lens artifact without executing the link target. | REQ-4 / REQ-9 |
-| FUNC-4 | `mission` is invoked. | Markdown file contains resolvable context links. | The CLI returns a deterministically aggregated mission packet with objective, constraints, relevant files, validation gates, risks, conflict diagnostics, overflow diagnostics, and citations when available. | REQ-4 / REQ-5 / REQ-6 |
-| FUNC-5 | `suggest-links` is invoked. | Markdown contains eligible plain references. | The CLI returns candidate context links and confidence reasons without modifying the file. | REQ-12 / REQ-13 |
+| FUNC-4 | `mission` is invoked after the read-side MVP. | Markdown file contains resolvable context links. | The CLI returns a deterministically aggregated mission packet with objective, constraints, relevant files, validation gates, risks, conflict diagnostics, overflow diagnostics, and citations when available. | REQ-4 / REQ-6 / REQ-16 |
+| FUNC-5 | `suggest-links` is invoked after the read-side MVP. | Markdown contains eligible plain references. | The CLI returns candidate context links and confidence reasons without modifying the file. | REQ-12 / REQ-13 |
 | FUNC-6 | A link omits `lens`. | Registry defines a default lens for the resource kind. | The resolver uses the registry default and reports the selected lens in output metadata. | REQ-11 / REQ-13 |
 | FUNC-7 | A forbidden param appears. | Link contains an unregistered parameter such as `prompt`. | Validation emits a diagnostic and resolution skips that link. | REQ-3 / REQ-9 |
 | FUNC-8 | Optional MCP adapter is invoked. | Adapter is installed and configured against the same resolver core. | The adapter exposes scan, resolve, and mission behavior through the core schemas without redefining output contracts. | REQ-10 |
-| FUNC-9 | `insert-link` is invoked. | Caller supplies kind, id, optional lens, target file location, and explicit write or patch option. | The CLI writes one normalized Markdown context link or emits a patch proposal, and written output validates through the same registry. | REQ-5 / REQ-12 |
+| FUNC-9 | `insert-link` is invoked after the read-side MVP. | Caller supplies kind, id, optional lens, target file location, and explicit write or patch option. | The CLI writes one normalized Markdown context link or emits a patch proposal, and written output validates through the same registry. | REQ-12 |
 
 Section status: Complete
 
@@ -208,13 +211,13 @@ External service expectations: The core CLI runs locally, requires no long-lived
 | --- | --- | --- | --- |
 | ACC-1 | Scan a Markdown file containing `[BEL-884](ctx://linear/issue/BEL-884?lens=execution)`. | Output contains one context link with scheme `ctx`, namespace `linear`, kind `issue`, id `BEL-884`, lens `execution`, label `BEL-884`, and source range. | REQ-1 / FUNC-1 |
 | ACC-2 | Validate a link with an unregistered `prompt` parameter. | Validation fails with a deterministic diagnostic and resolution does not run for that link. | REQ-3 / REQ-9 / FUNC-7 |
-| ACC-3 | Resolve a local doc context link twice with identical inputs. | Lens artifact bytes, registry identity, registry hash, and lockfile content hash are identical across both runs. | REQ-6 / REQ-7 / FUNC-3 |
-| ACC-4 | Run `mission` on a task file with task, contract, and repo-path links twice with identical inputs. | Output contains byte-identical bounded mission packets with the same ordered sections, citations, conflict diagnostics, overflow diagnostics, and no raw unbounded source dump. | REQ-4 / REQ-5 / REQ-6 / FUNC-4 |
-| ACC-5 | Run `suggest-links` on a handoff document. | Output proposes context links with confidence reasons and does not mutate files unless an explicit write option is supplied. | REQ-12 / FUNC-5 |
+| ACC-3 | Resolve `ctx://repo/path/docs/design/markdown-context-operational-design-spec.md?lens=excerpt` twice with identical inputs. | Lens artifact bytes, registry identity, registry hash, source identity, and lockfile content hash are identical across both runs. | REQ-4 / REQ-6 / REQ-7 / FUNC-3 |
+| ACC-4 | After the read-side MVP, run `mission` on a task file with task, contract, and repo-path links twice with identical inputs. | Output contains byte-identical bounded mission packets with the same ordered sections, citations, conflict diagnostics, overflow diagnostics, and no raw unbounded source dump. | REQ-4 / REQ-6 / REQ-16 / FUNC-4 |
+| ACC-5 | After the read-side MVP, run `suggest-links` on a handoff document. | Output proposes context links with confidence reasons and does not mutate files unless an explicit write option is supplied. | REQ-12 / FUNC-5 |
 | ACC-6 | Run offline mode against a resolver configured for network access. | Command fails closed with an offline-mode diagnostic. | REQ-8 / REQ-9 / FUNC-3 |
 | ACC-7 | Scan a fixture with 100 links. | Command completes in less than 2 seconds on the target local Node.js development runtime. | REQ-14 / FUNC-1 |
 | ACC-8 | Resolve or aggregate a fixture whose source text contains hostile agent instructions. | Lens and mission output retains hostile text only as attributed source data with citations and trust labels, and no renderer output promotes that source text into agent operating instructions. | REQ-15 / FUNC-3 / FUNC-4 |
-| ACC-9 | Run `insert-link` with an explicit write option and valid target location. | Command writes one normalized Markdown context link or emits a patch proposal when patch mode is selected, and validation recognizes the inserted link. | REQ-5 / REQ-12 / FUNC-9 |
+| ACC-9 | After the read-side MVP, run `insert-link` with an explicit write option and valid target location. | Command writes one normalized Markdown context link or emits a patch proposal when patch mode is selected, and validation recognizes the inserted link. | REQ-12 / FUNC-9 |
 | ACC-10 | Run an optional MCP adapter contract fixture against scan, resolve, and mission behavior. | Adapter responses use the same core schema versions, field contracts, diagnostics shape, and output semantics as CLI/core outputs without introducing MCP-only schema drift. | REQ-10 / FLOW-7 / FUNC-8 |
 
 Section status: Complete
@@ -227,7 +230,7 @@ Section status: Complete
 | REQ-2 | FLOW-2 / FUNC-2 | ACC-1 / ACC-2 | Registry validation covers grammar and supported declarations. |
 | REQ-3 | FLOW-2 / FUNC-7 | ACC-2 | Prompt firewall depends on closed parameter vocabulary. |
 | REQ-4 | FLOW-1 / FLOW-3 / FUNC-3 / FUNC-4 | ACC-3 / ACC-4 | Lens artifacts are bounded projections. |
-| REQ-5 | FLOW-1 / FLOW-3 / FLOW-4 / FLOW-5 / FUNC-1 / FUNC-2 / FUNC-3 / FUNC-4 / FUNC-5 / FUNC-9 | ACC-4 / ACC-5 / ACC-9 | CLI is the primary agent integration surface. |
+| REQ-5 | FLOW-1 / FLOW-2 / FLOW-3 / FUNC-1 / FUNC-2 / FUNC-3 | ACC-1 / ACC-2 / ACC-3 | `scan`, `validate`, and `resolve` are the read-side MVP CLI surface. |
 | REQ-6 | FLOW-3 / FLOW-6 / FUNC-3 / FUNC-4 | ACC-3 / ACC-4 | Deterministic proof requires byte comparison. |
 | REQ-7 | FLOW-3 / FLOW-6 / FUNC-3 | ACC-3 | Lockfile records context provenance. |
 | REQ-8 | FLOW-3 / FUNC-3 | ACC-6 | Offline mode proves the low-overhead core path. |
@@ -235,9 +238,10 @@ Section status: Complete
 | REQ-15 | FLOW-1 / FLOW-3 / FUNC-3 / FUNC-4 | ACC-8 | Source-derived content remains attributed data even when it contains hostile instructions. |
 | REQ-10 | FLOW-6 / FLOW-7 / FUNC-8 | ACC-3 / ACC-10 | Schema versions make future adapters compatible. |
 | REQ-11 | FLOW-1 / FUNC-6 | ACC-4 | Lens defaults are explicit registry behavior. |
-| REQ-12 | FLOW-4 / FLOW-5 / FUNC-5 / FUNC-9 | ACC-5 / ACC-9 | Write-side behavior is non-mutating by default. |
+| REQ-12 | FLOW-4 / FLOW-5 / FUNC-5 / FUNC-9 | ACC-5 / ACC-9 | Write-side behavior is later milestone scope and non-mutating by default. |
 | REQ-13 | FLOW-2 / FUNC-2 / FUNC-5 / FUNC-6 | ACC-2 / ACC-5 | Diagnostics make resolver decisions transparent. |
 | REQ-14 | FUNC-1 | ACC-7 | Performance bound applies to scan. |
+| REQ-16 | FLOW-1 / FUNC-4 | ACC-4 | Mission aggregation is later milestone scope after read-side deterministic proof. |
 
 Section status: Complete
 
@@ -249,13 +253,13 @@ Layer 2 status: Complete
 
 ## 12. Architecture Overview
 
-Architecture summary: `markdown-context` will be a TypeScript package with a core library, CLI, registry schema loader, context-link extractor, deterministic resolver registry, lens renderer, lockfile writer, and write-side helper module. The core path is local and CLI-first. MCP, OS app handlers, and external connectors are adapters over the core, not prerequisites.
+Architecture summary: `markdown-context` will be a TypeScript package with a core library, CLI, registry schema loader, context-link extractor, deterministic resolver registry, lens renderer, and lockfile writer. The read-side MVP ships `scan`, `validate`, and `resolve` for `ctx://repo/path/...` links first. Mission aggregation, write-side helpers, MCP, OS app handlers, and external connectors are later layers over the core, not prerequisites.
 
 Major components and boundaries: The core library owns extraction, validation, lens selection, resolver dispatch, diagnostics, and lockfile records. The CLI owns command parsing and file IO. `markdown-engine` owns Markdown parsing and normalized IR. Resolver modules own source-specific deterministic projection logic. Generated lens files and lockfiles are output artifacts consumed by agents and reviewers.
 
 Deployment or runtime placement: The package runs in the caller's local Node.js process. It may be installed as a repo dev dependency, global CLI, or agent image dependency. No daemon is required for the core path.
 
-Architecture rationale: This architecture satisfies the section 5 requirements by reusing `markdown-engine`, keeping link interpretation deterministic, giving agents a shell/file integration before MCP, and isolating future network or MCP behavior behind adapters.
+Architecture rationale: This architecture satisfies the section 5 requirements by reusing `markdown-engine`, keeping link interpretation deterministic, giving agents a shell/file integration before MCP, proving one offline resolver before network-backed adapters, and isolating future mission, write-side, network, or MCP behavior behind the same core contracts.
 
 Section status: Complete
 
@@ -271,11 +275,11 @@ Section status: Complete
 | TECH-6 | Deterministic resolver registry | Core library | Dispatch valid links to local deterministic resolvers by kind and lens. | FUNC-3 / FUNC-4 |
 | TECH-7 | Lens renderer | Core library | Emit bounded Markdown or JSON lens artifacts with citations and metadata. | FUNC-3 / FUNC-4 |
 | TECH-8 | Context lockfile writer | Core library and CLI | Record link URL, selected lens, registry identity, registry version, registry hash, source identity, resolver version, artifact path, and content hash. | FUNC-3 / FUNC-4 |
-| TECH-9 | CLI command surface | CLI | Provide `scan`, `validate`, `resolve`, `mission`, `suggest-links`, and `insert-link`. | FUNC-1 / FUNC-2 / FUNC-3 / FUNC-4 / FUNC-5 / FUNC-9 |
-| TECH-10 | Write-side proposal engine | CLI and core library | Suggest or insert normalized context links with non-mutating defaults. | FUNC-5 / FUNC-9 |
+| TECH-9 | CLI command surface | CLI | Provide `scan`, `validate`, and `resolve` for the read-side MVP; add `mission`, `suggest-links`, and `insert-link` in later milestones without changing core schemas. | FUNC-1 / FUNC-2 / FUNC-3 / FUNC-4 / FUNC-5 / FUNC-9 |
+| TECH-10 | Write-side proposal engine | CLI and core library | After the read-side MVP, suggest or insert normalized context links with non-mutating defaults. | FUNC-5 / FUNC-9 |
 | TECH-11 | Agent bootloader documentation | Documentation | Tell agents when to run CLI commands and how to treat lenses. | FUNC-4 / FUNC-5 |
 | TECH-12 | Optional adapter boundary | Future adapter | Expose resolver core through MCP without changing schemas. | FLOW-7 / FUNC-8 |
-| TECH-13 | Deterministic mission aggregator | Core library | Deduplicate, order, merge, budget, and render resolved lenses into a stable mission packet. | FUNC-4 |
+| TECH-13 | Deterministic mission aggregator | Core library | After the read-side MVP, deduplicate, order, merge, budget, and render resolved lenses into a stable mission packet. | FUNC-4 |
 | TECH-14 | Source-content isolation policy | Lens renderer and documentation | Label source-derived content with provenance and trust metadata, render it inside explicit source-data boundaries, and document that source text is evidence rather than an agent instruction source. | FUNC-3 / FUNC-4 |
 
 Section status: Complete
@@ -284,7 +288,7 @@ Section status: Complete
 
 | Change | Type | Compatibility impact | Reversibility | Mitigation |
 | --- | --- | --- | --- | --- |
-| Context-link grammar | Schema | New public grammar for `ctx://<namespace>/<kind>/<id>?lens=<lens>&...` or equivalent configured schemes. | Reversible before first release; semver-controlled after release | Version the grammar and validate fixtures. |
+| Context-link grammar | Schema | New public grammar for `ctx://<namespace>/<kind>/<id>?lens=<lens>&...`. | Reversible before first release; semver-controlled after release | Version the grammar and validate fixtures. |
 | Registry config | Config | New YAML or JSON schema for schemes, kinds, id patterns, lenses, params, defaults, and resolver mapping. | Reversible before first release; semver-controlled after release | Include schema version and unsupported-declaration diagnostics. |
 | Extracted link JSON | API | New machine-readable contract for scan output. | Reversible before first release; semver-controlled after release | Snapshot CLI JSON output. |
 | Lens artifact schema | Schema | New Markdown or JSON artifact contract consumed by agents. | Reversible before first release; semver-controlled after release | Include schema version, source citations, and bounded sections. |
@@ -295,6 +299,7 @@ Section status: Complete
 Canonical context URL interpretation:
 
 - Example: `ctx://linear/issue/BEL-884?lens=execution`
+- Initial offline resolver example: `ctx://repo/path/docs/design/markdown-context-operational-design-spec.md?lens=excerpt`
 - `scheme`: `ctx`
 - `namespace`: URL host, such as `linear`, `doc`, or `repo`
 - `kind`: first path segment, such as `issue`, `path`, or `section`
@@ -302,7 +307,7 @@ Canonical context URL interpretation:
 - `lens`: optional query value selected from the registry
 - Additional params: closed-vocabulary query values declared by the registry
 
-Minimum extracted link fields: `schemaVersion`, `label`, `url`, `canonicalUrl`, `scheme`, `namespace`, `kind`, `id`, `requestedLens`, `params`, and optional `sourceRange`.
+Minimum extracted link fields: `schemaVersion`, `label`, `url`, `canonicalUrl`, `scheme`, `namespace`, `kind`, `id`, `requestedLens`, `params`, and `sourceRange`. `sourceRange` is required for Markdown scan output; when a future non-Markdown source cannot provide ranges, it shall emit an explicit `sourceRangeUnavailable` diagnostic instead of omitting the field silently.
 
 Minimum lens artifact fields: `schemaVersion`, `canonicalUrl`, `selectedLens`, `resolverId`, `resolverVersion`, `sourceIdentity`, `contentHash`, `citations`, `sourceTrust`, `sourceContentBoundary`, and `content`.
 
@@ -344,7 +349,7 @@ Section status: Complete
 
 ## 15. Control Logic and Non-Functional Controls
 
-Control logic summary: Each command follows a fixed order: load inputs, parse Markdown through `markdown-engine`, extract candidate links, load registry, validate grammar and parameters, select lens, dispatch only validated links to resolvers, render bounded lenses, aggregate mission packets through the deterministic mission aggregator when requested, write optional artifacts and lockfile records, then emit diagnostics and command output.
+Control logic summary: Each read-side MVP command follows a fixed order: load inputs, parse Markdown through `markdown-engine`, extract candidate links, load registry, validate grammar and parameters, select lens, dispatch only validated `ctx://repo/path/...` links to the local resolver, render bounded lenses, write optional artifacts and lockfile records, then emit diagnostics and command output. Later mission and write-side commands reuse the same validated-link and resolver outputs before aggregation or patch proposal.
 
 Concurrency and ordering model: CLI commands are single-process by default. Multi-file commands process files in deterministic sorted order unless the caller requests a different order. Lockfile records are sorted by canonical URL, selected lens, resolver id, source identity, and artifact path before serialization.
 
@@ -356,8 +361,8 @@ Failure recovery model: Expected input, registry, resolver, and stale-lock failu
 | REQ-2 | TECH-2 / TECH-3 | Registry validation is closed vocabulary. |
 | REQ-3 | TECH-4 | Prompt-like params fail before resolution. |
 | REQ-4 | TECH-5 / TECH-6 / TECH-7 | Resolvers produce bounded artifacts. |
-| REQ-5 | TECH-9 | CLI-first integration avoids mandatory MCP. |
-| REQ-6 | TECH-6 / TECH-7 / TECH-8 / TECH-13 | Determinism is proved by canonical output, stable aggregation, and hashes. |
+| REQ-5 | TECH-9 | Read-side MVP CLI integration avoids mandatory MCP. |
+| REQ-6 | TECH-6 / TECH-7 / TECH-8 | Read-side MVP determinism is proved by canonical lens output and hashes. |
 | REQ-7 | TECH-8 | Lockfile records provenance. |
 | REQ-8 | TECH-6 / TECH-9 | Offline mode blocks non-local resolvers. |
 | REQ-9 | TECH-4 / TECH-6 / TECH-9 | Links remain data through the command path. |
@@ -367,6 +372,7 @@ Failure recovery model: Expected input, registry, resolver, and stale-lock failu
 | REQ-12 | TECH-10 | Suggestions are reviewable and non-mutating by default. |
 | REQ-13 | TECH-3 / TECH-9 | Diagnostics expose decisions. |
 | REQ-14 | TECH-1 / TECH-2 / TECH-9 | Scan path avoids resolver work. |
+| REQ-16 | TECH-8 / TECH-11 / TECH-13 / TECH-14 | Later mission packets reuse deterministic resolved lenses, aggregation policy, and source-content boundaries. |
 
 Section status: Complete
 
@@ -381,11 +387,11 @@ Section status: Complete
 | Resolver trace metadata | Log | Records resolver id, version, source identity, selected lens, and offline status. | Maintainers |
 | Snapshot test output | Audit | Detects unintended contract drift. | Maintainers |
 
-Rollout plan: Build the core library and CLI behind fixture-driven tests first. Publish registry, lens, and lockfile schemas before adding optional adapters. Add AGENTS.md and CLAUDE.md bootloader examples only after CLI behavior is stable. Treat MCP as a later adapter over the same core output.
+Rollout plan: Build the core library and read-side CLI behind fixture-driven tests first: `scan`, `validate`, and `resolve` for `ctx://repo/path/...`. Publish registry, lens, CLI JSON, diagnostics, and lockfile schemas before adding mission aggregation, write-side commands, or optional adapters. Add AGENTS.md and CLAUDE.md bootloader examples only after read-side CLI behavior is stable. Treat MCP as a later adapter over the same core output.
 
 Rollback or containment plan: Before first release, revert the package or remove generated files. After release, disable adoption by removing bootloader instructions, generated lens artifacts, and lockfiles from consuming repos. Since the core design does not mutate source Markdown without explicit write commands, rollback containment is limited to reverting intentional link insertions or generated artifacts.
 
-Operator actions: Maintainers run `markdown-context validate`, inspect diagnostics, compare lockfile diffs, review suggested link patches before applying, and block release on deterministic proof failure or prompt-firewall regression.
+Operator actions: Maintainers run `markdown-context scan`, `markdown-context validate`, and `markdown-context resolve`, inspect diagnostics, compare lockfile diffs, review any later suggested link patches before applying, and block release on deterministic proof failure or prompt-firewall regression.
 
 Section status: Complete
 
@@ -396,10 +402,10 @@ Section status: Complete
 | VAL-1 | Test | `markdown-engine` integration extracts context links with labels, URLs, source ranges, and reference-definition metadata from public `linkReferences` records. | REQ-1 / FUNC-1 / TECH-1 / TECH-2 |
 | VAL-2 | Test | Registry grammar validates schemes, kinds, id patterns, lenses, params, and default-lens selection. | REQ-2 / REQ-11 / FUNC-2 / FUNC-6 / TECH-3 / TECH-5 |
 | VAL-3 | Test | Supported context links resolve into bounded lens artifacts with expected fields and citations. | REQ-4 / FUNC-3 / FUNC-4 / TECH-6 / TECH-7 |
-| VAL-4 | Test / Analysis | Repeated offline resolution produces byte-identical lens artifacts, byte-identical mission packets, identical registry hashes, and identical lockfile hashes for identical inputs under the canonicalization and mission aggregation rules. | REQ-6 / REQ-7 / REQ-8 / FUNC-3 / FUNC-4 / TECH-6 / TECH-7 / TECH-8 / TECH-13 |
+| VAL-4 | Test / Analysis | Repeated offline `ctx://repo/path/...` resolution produces byte-identical lens artifacts, identical registry hashes, and identical lockfile hashes for identical inputs under the canonicalization rules; later mission tests add byte-identical mission packets under the mission aggregation rules. | REQ-4 / REQ-6 / REQ-7 / REQ-8 / REQ-16 / FUNC-3 / FUNC-4 / TECH-6 / TECH-7 / TECH-8 / TECH-13 |
 | VAL-5 | Test / Inspection | Prompt-like params, unknown params, hostile source-content instructions, OS-handler execution attempts, and unsupported resolvers fail closed or remain bounded as attributed source data. | REQ-3 / REQ-9 / REQ-15 / FUNC-3 / FUNC-4 / FUNC-7 / TECH-4 / TECH-6 / TECH-7 / TECH-11 / TECH-14 |
-| VAL-6 | Test | CLI commands emit documented text or JSON output, diagnostics, exit codes, explicit `insert-link` write behavior, and non-mutating suggestion behavior. | REQ-5 / REQ-12 / REQ-13 / FUNC-1 / FUNC-2 / FUNC-5 / FUNC-9 / TECH-9 / TECH-10 |
-| VAL-7 | Manual exercise | A coding agent can run one preflight command and use the mission packet without MCP. | OBJ-2 / REQ-5 / FUNC-4 / TECH-9 / TECH-11 |
+| VAL-6 | Test | CLI commands emit documented text or JSON output, diagnostics, and exit codes; later write-side tests verify explicit `insert-link` write behavior and non-mutating suggestion behavior. | REQ-5 / REQ-12 / REQ-13 / FUNC-1 / FUNC-2 / FUNC-5 / FUNC-9 / TECH-9 / TECH-10 |
+| VAL-7 | Manual exercise | A coding agent can run the read-side CLI preflight and use resolved lens output without MCP; after the mission milestone, the agent can use the mission packet without MCP. | OBJ-2 / REQ-5 / REQ-16 / FUNC-3 / FUNC-4 / TECH-9 / TECH-11 |
 | VAL-8 | Inspection | MCP and external connectors are absent from the core runtime path or isolated behind adapter boundaries. | REQ-10 / CON-4 / FLOW-7 / FUNC-8 / TECH-12 |
 | VAL-9 | Snapshot / Contract review | Context-link, registry, lens artifact, CLI JSON, diagnostics, source-content boundary fields, optional adapter output contracts, and lockfile schemas are versioned and stable. | REQ-10 / REQ-13 / REQ-15 / FUNC-8 / TECH-3 / TECH-7 / TECH-8 / TECH-9 / TECH-12 / TECH-14 |
 | VAL-10 | Performance test | Scan completes a 100-link Markdown fixture in less than 2 seconds on a local Node.js development runtime. | REQ-14 / FUNC-1 / TECH-1 / TECH-2 / TECH-9 |
@@ -420,7 +426,7 @@ Section status: Complete
 | REQ-3 | TECH-4 | VAL-5 |
 | REQ-4 | TECH-5 / TECH-6 / TECH-7 | VAL-3 / VAL-4 |
 | REQ-5 | TECH-9 | VAL-6 / VAL-7 |
-| REQ-6 | TECH-6 / TECH-7 / TECH-8 / TECH-13 | VAL-4 |
+| REQ-6 | TECH-6 / TECH-7 / TECH-8 | VAL-4 |
 | REQ-7 | TECH-8 | VAL-4 |
 | REQ-8 | TECH-6 / TECH-9 | VAL-4 / VAL-5 |
 | REQ-9 | TECH-4 / TECH-6 / TECH-9 | VAL-5 |
@@ -430,6 +436,7 @@ Section status: Complete
 | REQ-12 | TECH-10 | VAL-6 |
 | REQ-13 | TECH-3 / TECH-9 | VAL-6 / VAL-9 |
 | REQ-14 | TECH-1 / TECH-2 / TECH-9 | VAL-10 |
+| REQ-16 | TECH-8 / TECH-11 / TECH-13 / TECH-14 | VAL-4 / VAL-7 / VAL-9 |
 
 Section status: Complete
 
@@ -455,12 +462,17 @@ Section status: Complete
 | RISK-4 | Resolver schemas become too project-specific. | Medium | Medium | Versioned registry with generic schemes, kinds, lenses, and adapter boundaries. | VAL-9 |
 | RISK-5 | Write-side commands mutate Markdown unexpectedly. | Low | Medium | Non-mutating defaults, patch proposal mode, explicit write flags. | VAL-6 |
 
+### Resolved Implementation Decisions
+
+| ID | Decision | Owner | Resolution |
+| --- | --- | --- | --- |
+| Q-1 | Default context-link scheme | Project owner | Use `ctx://` for the initial implementation and lock it into grammar fixtures. |
+| Q-2 | First local deterministic resolver | Project owner | Ship `repo/path` first to prove offline deterministic resolution against checked-in repository files before issue mirrors, doc-section projections, or external connectors. |
+
 ### Open Questions
 
 | ID | Question | Owner | Due date or trigger | Resolution plan |
 | --- | --- | --- | --- | --- |
-| Q-1 | Should the default scheme be `ctx://`, `lens://`, or configurable per repository? | Project owner | Before registry schema freeze | Decide during initial implementation planning and lock into grammar fixtures. |
-| Q-2 | Which local deterministic resolver should ship first: repo path, doc section, issue mirror, or generic file lens? | Project owner | Before first implementation slice | Choose the resolver that proves VAL-4 with least external dependency. |
 | Q-3 | Should generated lens artifacts default to Markdown, JSON, or both? | Agent workflow reviewer | Before CLI output contract review | Validate with one Codex-style and one no-tool LLM workflow. |
 
 ### Waivers
@@ -476,15 +488,15 @@ Waivers: none
 | Requirements are testable | Pass. Each `REQ-*` has a verification reference. |
 | Functional behavior is externally visible | Pass. Section 8 defines CLI and artifact behavior. |
 | Technical mechanisms trace to behavior | Pass. Sections 13 and 17 map mechanisms to functions and requirements. |
-| Deterministic proof is explicit | Pass. REQ-6, REQ-7, VAL-4, ACC-3, ACC-4, TECH-8, TECH-13, canonicalization rules, and mission aggregation rules define deterministic lens, mission, and lockfile proof. |
+| Deterministic proof is explicit | Pass. REQ-6, REQ-7, VAL-4, ACC-3, TECH-8, and canonicalization rules define deterministic read-side lens and lockfile proof; REQ-16, ACC-4, TECH-13, and mission aggregation rules define the later mission proof. |
 | Registry provenance is auditable | Pass. REQ-7, TECH-8, VAL-4, minimum lockfile fields, and canonicalization rules require registry id, version, and hash. |
 | Source content remains data | Pass. REQ-15, Misuse-4, ACC-8, TECH-14, VAL-5, and source-content isolation rules define the instruction/data boundary. |
 | Rollback and containment exist | Pass. Section 16 defines removal, disablement, and generated-artifact containment. |
-| Open questions do not block approval | Pass. Q-1 through Q-3 affect implementation choices but not architecture viability. |
+| Open questions do not block approval | Pass. Q-1 and Q-2 are resolved for the read-side MVP; Q-3 affects output-format review before final CLI contract freeze but does not block package scaffold, `scan`, `validate`, or `repo/path` resolution. |
 
 Final readiness statement: Ready for implementation
 
-Implementation sequencing note: Resolve Q-1 and Q-2 before the first implementation slice, and resolve Q-3 before CLI output contract review. These are bounded implementation planning decisions, not experiment-level unknowns. The implementation shall not begin with MCP, OS protocol handlers, or live external connectors until the CLI-first deterministic proof passes.
+Implementation sequencing note: Begin with the read-side MVP: package scaffold, `scan`, `validate`, and `resolve` for `ctx://repo/path/...` links. Resolve Q-3 before CLI output contract review. The implementation shall not begin with mission aggregation, write-side commands, MCP, OS protocol handlers, or live external connectors until the CLI-first deterministic proof passes.
 
 Section status: Complete
 
@@ -493,7 +505,7 @@ Section status: Complete
 | Field | Value |
 | --- | --- |
 | Document | `docs/design/markdown-context-operational-design-spec.md` |
-| Review date | 2026-05-01 |
+| Review date | 2026-05-14 |
 | Moderator | Codex |
 | Decision owner | Project owner |
 | Proposed rigor level | R2 |
@@ -504,12 +516,12 @@ Section status: Complete
 | Traceability result | Pass after revision |
 | Verdict | Approve for implementation |
 | Open findings | none |
-| Resolved findings verified in this decision | ST-1 / ST-2 / SM-1 / SM-2 / TR-1 / TR-2 / TR-3 / TR-4 |
+| Resolved findings verified in this decision | ST-1 / ST-2 / ST-3 / SM-1 / SM-2 / SM-3 / SM-4 / TR-1 / TR-2 / TR-3 / TR-4 / TR-5 |
 | Reviewed waivers | none |
 | Required heightened controls | none |
 | Approval conditions | none |
 | Top blockers | none |
-| Required follow-ups | Resolve Q-1 and Q-2 before the first implementation slice; resolve Q-3 before CLI output contract review. |
+| Required follow-ups | Create the `markdown-context` MVP implementation issue before code begins; resolve Q-3 before CLI output contract review. |
 
 ### Review Findings Addressed
 
@@ -523,6 +535,10 @@ Section status: Complete
 | ST-2 | Major | Resolved | 18 | Consensus review found the final readiness statement did not use a controlled template value. | Replace conditional prose with `Final readiness statement: Ready for implementation` and move sequencing details to a non-readiness note. | Codex |
 | SM-2 | Major | Resolved | 4 / 9 / 14 / 17 / 18 | Consensus review found prompt-injection controls did not cover hostile resolved source content consumed by agents. | Add source-content instruction/data boundary requirements, misuse case, acceptance case, artifact rules, mechanism, verification mapping, and risk mitigation. | Codex |
 | TR-4 | Major | Resolved | 5 / 13 / 14 / 17 | Consensus review found lockfile proof omitted registry identity even though registry config affects validation, lens selection, resolver mapping, and output. | Add registry id, version, and hash to REQ-7, TECH-8, lockfile fields, canonicalization rules, VAL-4, and deterministic proof gates. | Codex |
+| ST-3 | Major | Resolved | 1 / 18 | Follow-up review found readiness overstated because Q-1 and Q-2 were unresolved while implementation was labeled ready. | Resolve Q-1 and Q-2 in the spec and make sequencing target the read-side MVP. | Codex |
+| SM-3 | Major | Resolved | 1 / 5 / 6 | Follow-up review found the baseline mixed upstream `markdown-engine` capability with missing `markdown-context` implementation. | Update the baseline to distinguish upstream `linkReferences` from this repo's zero implementation state. | Codex |
+| SM-4 | Major | Resolved | 5 / 8 / 16 | Follow-up review found MVP scope too broad because `mission`, `suggest-links`, and `insert-link` were included in the first mandatory command surface. | Split the read-side MVP from later mission and write-side milestones. | Codex |
+| TR-5 | Major | Resolved | 10 / 14 / 17 | Follow-up review found source-range expectations inconsistent between minimum fields and acceptance coverage. | Make `sourceRange` required for Markdown scan output and define the diagnostic fallback for future non-Markdown sources. | Codex |
 
 ### Semantic Scores
 
@@ -530,7 +546,7 @@ Section status: Complete
 | --- | --- | --- |
 | Problem validity | 3 | Current gap is evidenced by repo inspection and aligns with runtime architecture direction. |
 | Requirement quality | 3 | Requirements are singular, testable, and mapped to validation. |
-| Functional adequacy | 3 | Read-side, write-side, mission packet, and audit flows are covered. |
+| Functional adequacy | 3 | Read-side MVP, later write-side, later mission packet, and audit flows are covered with milestone boundaries. |
 | Technical feasibility | 3 | Builds on existing `markdown-engine` behavior and local CLI conventions. |
 | Non-functional adequacy | 3 | Determinism, safety, compatibility, and performance are covered by canonicalization, mission aggregation, registry-provenanced lockfiles, prompt-firewall controls, and source-content isolation. |
 | Operational safety | 3 | Core path is local, inert, reversible, and excludes handler execution. |
