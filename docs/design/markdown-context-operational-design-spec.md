@@ -12,7 +12,7 @@
 | Reviewers | Project owner, `markdown-engine` contract reviewer, coding-agent workflow reviewer, security/data reviewer |
 | Decision owner | Project owner |
 | Target milestone or release | `markdown-context` initial implementation approval |
-| Last updated | 2026-05-01 |
+| Last updated | 2026-05-14 |
 | Related docs | `RUNTIME_ARCHITECTURE.md`, `docs/design/markdown-engine-operational-design-spec.md`, `docs/contracts/api.md` |
 | Related tickets | Not yet assigned |
 
@@ -24,7 +24,7 @@ Problem summary: Coding agents are unable to consume linked work context determi
 
 Proposed outcome: `markdown-context` provides a CLI-first context-link system that validates typed Markdown links, resolves them through deterministic lens projections, writes transparent lens artifacts and lockfiles, and gives coding agents a low-overhead way to read and create bounded context references without requiring MCP.
 
-Why now: `markdown-engine` now has deterministic parsing, normalized IR, link URL preservation, and allowed-scheme validation, so the next project can build on that stable foundation before downstream agent workflows hard-code weaker conventions.
+Why now: `markdown-engine` now has deterministic parsing, normalized IR, public `linkReferences` extraction for URL-bearing Markdown constructs, and allowed-scheme validation, so the next project can build on that stable foundation before downstream agent workflows hard-code weaker conventions.
 
 Top risks or unknowns:
 
@@ -87,7 +87,7 @@ Section status: Complete
 
 | ID | Type | Statement | Source or rationale | Validation or resolution plan |
 | --- | --- | --- | --- | --- |
-| CON-1 | Constraint | `markdown-context` shall consume `markdown-engine` public APIs for Markdown parsing and link preservation. | Prevents duplicated Markdown parser behavior. | Validate through dependency inspection and integration tests in VAL-1. |
+| CON-1 | Constraint | `markdown-context` shall consume `markdown-engine` public APIs for Markdown parsing and `linkReferences` extraction. | Prevents duplicated Markdown parser and link-like reference traversal behavior. | Validate through dependency inspection and integration tests in VAL-1. |
 | CON-2 | Invariant | Context-link parameters are declarative lens requests, not executable prompt text. | Maintains prompt firewall and agent safety. | Validate with negative prompt-param fixtures in VAL-5. |
 | CON-3 | Invariant | Deterministic lens resolution shall not require an LLM. | Deterministic verification is a core product claim. | Validate through offline resolver tests in VAL-4. |
 | CON-4 | Constraint | MCP shall remain an optional adapter over the resolver core. | Lower-overhead agent integration is a stated design goal. | Inspect package boundaries and CLI docs in VAL-8. |
@@ -126,7 +126,7 @@ Section status: Complete
 
 | Measure | Baseline | Target or decision threshold | Evaluation date or decision event | Related IDs |
 | --- | --- | --- | --- | --- |
-| Context-link extraction coverage | 0 extraction helpers on 2026-05-01 | CLI `scan` identifies inline links, images, and definitions from `markdown-engine` IR fixtures. | Initial implementation review | OBJ-1 / REQ-1 |
+| Context-link extraction coverage | 0 extraction helpers on 2026-05-01 | CLI `scan` identifies context links from `markdown-engine` `linkReferences` fixtures covering inline links, images, definitions, link reference usages, and image reference usages. | Initial implementation review | OBJ-1 / REQ-1 |
 | Deterministic resolution proof | 0 lockfile or deterministic lens proof on 2026-05-01 | Repeated `mission` runs produce byte-identical lenses, byte-identical mission packets, identical registry hashes, and identical lockfile hashes for fixture inputs. | Deterministic proof milestone | OBJ-3 / REQ-6 / REQ-7 |
 | Agent preflight usability | Agents currently rely on prose instructions or manual URL resolution. | Codex-style shell workflow can run one command and receive a mission packet with citations. | Agent workflow exercise | OBJ-2 / REQ-5 |
 | Write-side safety | 0 suggestion or insert helpers on 2026-05-01 | `suggest-links` produces a reviewable patch or JSON proposal without mutating files by default. | Write-side milestone | OBJ-4 / REQ-12 |
@@ -263,7 +263,7 @@ Section status: Complete
 
 | ID | Mechanism | Component or owner | Responsibility | Related behaviors |
 | --- | --- | --- | --- | --- |
-| TECH-1 | `markdown-engine` integration | Core library | Parse Markdown and receive normalized documents with source-located link nodes. | FUNC-1 |
+| TECH-1 | `markdown-engine` integration | Core library | Parse Markdown and receive normalized documents with source-located `linkReferences` records. | FUNC-1 |
 | TECH-2 | Context-link parser | Core library | Canonicalize URL components into scheme, kind, id, lens, params, label, and source range. | FUNC-1 / FUNC-2 |
 | TECH-3 | Registry schema loader | Core library | Load versioned YAML or JSON registry config and reject unsupported declarations. | FUNC-2 / FUNC-6 / FUNC-7 |
 | TECH-4 | Prompt firewall validator | Core library | Reject free-form or unregistered parameters before resolver dispatch. | FUNC-2 / FUNC-7 |
@@ -393,7 +393,7 @@ Section status: Complete
 
 | ID | Verification method | What is verified | Related IDs |
 | --- | --- | --- | --- |
-| VAL-1 | Test | `markdown-engine` integration extracts context links with labels, URLs, and source ranges from normalized IR. | REQ-1 / FUNC-1 / TECH-1 / TECH-2 |
+| VAL-1 | Test | `markdown-engine` integration extracts context links with labels, URLs, source ranges, and reference-definition metadata from public `linkReferences` records. | REQ-1 / FUNC-1 / TECH-1 / TECH-2 |
 | VAL-2 | Test | Registry grammar validates schemes, kinds, id patterns, lenses, params, and default-lens selection. | REQ-2 / REQ-11 / FUNC-2 / FUNC-6 / TECH-3 / TECH-5 |
 | VAL-3 | Test | Supported context links resolve into bounded lens artifacts with expected fields and citations. | REQ-4 / FUNC-3 / FUNC-4 / TECH-6 / TECH-7 |
 | VAL-4 | Test / Analysis | Repeated offline resolution produces byte-identical lens artifacts, byte-identical mission packets, identical registry hashes, and identical lockfile hashes for identical inputs under the canonicalization and mission aggregation rules. | REQ-6 / REQ-7 / REQ-8 / FUNC-3 / FUNC-4 / TECH-6 / TECH-7 / TECH-8 / TECH-13 |
