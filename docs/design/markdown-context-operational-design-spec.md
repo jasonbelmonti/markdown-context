@@ -14,7 +14,7 @@
 | Target milestone or release | `markdown-context` initial implementation approval |
 | Last updated | 2026-05-14 |
 | Related docs | `RUNTIME_ARCHITECTURE.md`, `docs/design/markdown-engine-operational-design-spec.md`, `docs/contracts/api.md` |
-| Related tickets | Not yet assigned; create the `markdown-context` MVP implementation issue before starting code |
+| Related tickets | Linear project `markdown-context MVP`; Linear issue `BEL-1047` |
 
 ## 0. Executive Summary
 
