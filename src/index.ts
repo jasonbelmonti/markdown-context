@@ -8,3 +8,4 @@ export type {
   SourceRange,
   ValidateResult,
 } from "./core/types.js";
+export { scanMarkdown } from "./core/scan.js";
