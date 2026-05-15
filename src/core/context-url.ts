@@ -132,13 +132,25 @@ function compareQueryEntries(
   [leftKey, leftValue]: [string, string],
   [rightKey, rightValue]: [string, string],
 ): number {
-  const keyOrder = leftKey.localeCompare(rightKey);
+  const keyOrder = compareCodeUnits(leftKey, rightKey);
 
   if (keyOrder !== 0) {
     return keyOrder;
   }
 
-  return leftValue.localeCompare(rightValue);
+  return compareCodeUnits(leftValue, rightValue);
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+
+  if (left > right) {
+    return 1;
+  }
+
+  return 0;
 }
 
 function sortedRecord(record: Record<string, string>): Record<string, string> {
