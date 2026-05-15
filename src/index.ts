@@ -9,3 +9,4 @@ export type {
   ValidateResult,
 } from "./core/types.js";
 export { scanMarkdown } from "./core/scan.js";
+export { loadRegistry, validateContextLinks } from "./registry/registry.js";
