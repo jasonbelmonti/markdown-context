@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "markdown-context.registry.v0",
+  "registryId": "ms1-local",
+  "registryVersion": "0.1.0",
+  "resources": [
+    {
+      "scheme": "ctx",
+      "namespace": "repo",
+      "kind": "path",
+      "defaultLens": "excerpt",
+      "lenses": ["excerpt"],
+      "params": []
+    }
+  ]
+}
