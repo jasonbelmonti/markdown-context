@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 import { scanMarkdown } from "../src/core/scan.js";
+import { validateScanResult as validatePublicScanResult } from "../src/index.js";
 import { parseRegistry, validateContextLinks } from "../src/registry/registry.js";
 import { resolveRepoPathLink } from "../src/resolvers/repo-path.js";
 
@@ -46,6 +47,50 @@ describe("BEL-1049 MS-1 critical path", () => {
     });
   });
 
+  it("extracts ctx links with sourceRange from link-like Markdown references", () => {
+    const scan = scanMarkdown(
+      [
+        "[inline](ctx://repo/path/inline.md?lens=excerpt)",
+        "![inline image](ctx://repo/path/image.md?lens=excerpt)",
+        "[definition-only]: ctx://repo/path/definition-only.md?lens=excerpt",
+        "[link-ref]: ctx://repo/path/link-ref.md?lens=excerpt",
+        "[image-ref]: ctx://repo/path/image-ref.md?lens=excerpt",
+        "[reference usage][link-ref]",
+        "![image reference][image-ref]",
+      ].join("\n\n"),
+    );
+
+    expect(scan.diagnostics).toEqual([]);
+    expect(scan.links).toHaveLength(7);
+    expect(scan.links.every((link) => link.sourceRange.start.line > 0)).toBe(true);
+    expect(scan.links.map((link) => link.label)).toEqual(
+      expect.arrayContaining([
+        "inline",
+        "inline image",
+        "definition-only",
+        "link-ref",
+        "image-ref",
+        "reference usage",
+        "image reference",
+      ]),
+    );
+    expect(scan.links.map((link) => link.canonicalUrl)).toEqual(
+      expect.arrayContaining([
+        "ctx://repo/path/inline.md?lens=excerpt",
+        "ctx://repo/path/image.md?lens=excerpt",
+        "ctx://repo/path/definition-only.md?lens=excerpt",
+        "ctx://repo/path/link-ref.md?lens=excerpt",
+        "ctx://repo/path/image-ref.md?lens=excerpt",
+      ]),
+    );
+    expect(
+      scan.links.filter((link) => link.canonicalUrl === "ctx://repo/path/link-ref.md?lens=excerpt"),
+    ).toHaveLength(2);
+    expect(
+      scan.links.filter((link) => link.canonicalUrl === "ctx://repo/path/image-ref.md?lens=excerpt"),
+    ).toHaveLength(2);
+  });
+
   it("sorts lens with other query params in canonical URLs", () => {
     const scan = scanMarkdown(
       "[source](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt&a=1)",
@@ -61,6 +106,17 @@ describe("BEL-1049 MS-1 critical path", () => {
     });
   });
 
+  it("sorts decoded query params with deterministic code-unit ordering", () => {
+    const scan = scanMarkdown(
+      "[source](ctx://repo/path/fixtures/ms1/context-source.md?a=lower&A=upper&lens=excerpt&%7A=last)",
+    );
+
+    expect(scan.diagnostics).toEqual([]);
+    expect(scan.links[0]?.canonicalUrl).toBe(
+      "ctx://repo/path/fixtures/ms1/context-source.md?A=upper&a=lower&lens=excerpt&z=last",
+    );
+  });
+
   it("reports malformed ctx path escapes as scan diagnostics", () => {
     const scan = scanMarkdown("[bad](ctx://repo/path/%E0%A4%A?lens=excerpt)");
 
@@ -74,6 +130,21 @@ describe("BEL-1049 MS-1 critical path", () => {
     ]);
   });
 
+  it("reports duplicate params after URL query decoding", () => {
+    const scan = scanMarkdown(
+      "[bad](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt&%6Cens=full)",
+    );
+
+    expect(scan.links).toEqual([]);
+    expect(scan.diagnostics).toMatchObject([
+      {
+        code: "ctx.param.duplicate",
+        severity: "error",
+        url: "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt&%6Cens=full",
+      },
+    ]);
+  });
+
   it("does not emit parsed links that already have scan errors", async () => {
     const registry = parseRegistry(
       JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
@@ -81,6 +152,7 @@ describe("BEL-1049 MS-1 critical path", () => {
     const markdown = await readFile("fixtures/ms1/duplicate-param.md", "utf8");
     const scan = scanMarkdown(markdown, "fixtures/ms1/duplicate-param.md");
     const validated = validateContextLinks(scan.links, registry);
+    const failClosed = validatePublicScanResult(scan, registry);
 
     expect(scan.links).toEqual([]);
     expect(scan.diagnostics).toMatchObject([
@@ -91,6 +163,14 @@ describe("BEL-1049 MS-1 critical path", () => {
     ]);
     expect(validated.valid).toBe(true);
     expect(validated.links).toEqual([]);
+    expect(failClosed.valid).toBe(false);
+    expect(failClosed.links).toEqual([]);
+    expect(failClosed.diagnostics).toMatchObject([
+      {
+        code: "ctx.param.duplicate",
+        severity: "error",
+      },
+    ]);
   });
 
   it("validates valid links and rejects prompt-like params", async () => {
