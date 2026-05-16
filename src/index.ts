@@ -9,5 +9,5 @@ export type {
   ValidateResult,
 } from "./core/types.js";
 export { scanMarkdown } from "./core/scan.js";
-export { loadRegistry, validateContextLinks, validateScanResult } from "./registry/registry.js";
+export { loadRegistry, validateScanResult } from "./registry/registry.js";
 export { resolveRepoPathLink } from "./resolvers/repo-path.js";
