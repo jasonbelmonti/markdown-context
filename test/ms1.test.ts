@@ -173,6 +173,13 @@ describe("BEL-1049 MS-1 critical path", () => {
     ]);
   });
 
+  it("does not export the link-only validator from the root public API", async () => {
+    const publicApi = await import("../src/index.js");
+
+    expect(Object.hasOwn(publicApi, "validateContextLinks")).toBe(false);
+    expect(Object.hasOwn(publicApi, "validateScanResult")).toBe(true);
+  });
+
   it("validates valid links and rejects prompt-like params", async () => {
     const registry = parseRegistry(
       JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
@@ -227,6 +234,74 @@ describe("BEL-1049 MS-1 critical path", () => {
 
     expect(() => parseRegistry(registry)).toThrow(
       "Unsupported registry schemaVersion: markdown-context.registry.v999.",
+    );
+  });
+
+  it.each([
+    [
+      "default lens outside declared lenses",
+      {
+        defaultLens: "full",
+        lenses: ["excerpt"],
+      },
+      "Registry resource.defaultLens must be declared in resource.lenses.",
+    ],
+    [
+      "empty lenses",
+      {
+        lenses: [],
+      },
+      "Registry resource.lenses must contain at least one value.",
+    ],
+    [
+      "empty lens names",
+      {
+        lenses: ["excerpt", ""],
+      },
+      "Registry resource.lenses must not contain empty strings.",
+    ],
+    [
+      "duplicate lens names",
+      {
+        lenses: ["excerpt", "excerpt"],
+      },
+      "Registry resource.lenses must not contain duplicate values: excerpt.",
+    ],
+    [
+      "empty param names",
+      {
+        params: [""],
+      },
+      "Registry resource.params must not contain empty strings.",
+    ],
+    [
+      "duplicate param names",
+      {
+        params: ["mode", "mode"],
+      },
+      "Registry resource.params must not contain duplicate values: mode.",
+    ],
+  ])("rejects registry resources with %s", (_label, override, expectedMessage) => {
+    expect(() => parseRegistry(registryWithResource(override))).toThrow(expectedMessage);
+  });
+
+  it("rejects duplicate registry resource declarations", () => {
+    expect(() =>
+      parseRegistry({
+        schemaVersion: "markdown-context.registry.v0",
+        registryId: "fixtures/ms1",
+        registryVersion: "0.1.0",
+        resources: [
+          validRegistryResource(),
+          {
+            ...validRegistryResource(),
+            scheme: "CTX",
+            namespace: "REPO",
+          },
+        ],
+      }),
+    ).toThrow(
+      "Registry resources must not contain duplicate resource declarations: ctx://repo/path.",
     );
   });
 
@@ -559,6 +634,26 @@ async function resolveSingleRepoPath(
   }
 
   return artifact;
+}
+
+function registryWithResource(override: Partial<ReturnType<typeof validRegistryResource>>) {
+  return {
+    schemaVersion: "markdown-context.registry.v0",
+    registryId: "fixtures/ms1",
+    registryVersion: "0.1.0",
+    resources: [{ ...validRegistryResource(), ...override }],
+  };
+}
+
+function validRegistryResource() {
+  return {
+    scheme: "ctx",
+    namespace: "repo",
+    kind: "path",
+    defaultLens: "excerpt",
+    lenses: ["excerpt"],
+    params: [],
+  };
 }
 
 async function runCli(args: string[]): Promise<{ stdout: string }> {
