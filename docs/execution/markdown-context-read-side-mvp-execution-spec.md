@@ -143,8 +143,8 @@ Section status: Complete
 | --- | --- | --- | --- | --- | --- |
 | SURF-1 | Package scaffold and toolchain (`package.json`, tsconfig, test config, CLI bin config) | Code / Config | Implementation owner | Write during `WP-1`; no unrelated package publication metadata beyond local MVP needs. | REV-2 |
 | SURF-2 | Core scanning and link model (`src/core` or equivalent) | Code / Contract | Implementation owner | Write public internal types and scan functions; read design spec and engine docs. | REV-2 / REV-3 |
-| SURF-3 | Registry validation and diagnostics (`src/registry`, `src/diagnostics` or equivalent) | Code / Contract | Implementation owner | Write minimal registry schema, parser, and deterministic diagnostics. | REV-2 / REV-3 |
-| SURF-4 | Repo-path resolver, lens renderer, lockfile writer (`src/resolvers`, `src/lens`, `src/lockfile` or equivalent) | Code / Contract | Implementation owner | Write offline resolver, bounded renderer, and deterministic lockfile records only. | REV-2 / REV-3 |
+| SURF-3 | Registry validation and diagnostics (`src/registry`, `src/diagnostics` or equivalent) | Code / Contract | Implementation owner | Write minimal registry schema, parser, default-lens selection, and deterministic diagnostics. | REV-2 / REV-3 |
+| SURF-4 | Repo-path resolver, lens renderer, lockfile writer (`src/resolvers`, `src/lens`, `src/lockfile` or equivalent) | Code / Contract | Implementation owner | Write offline resolver, bounded renderer, selected-lens metadata, and deterministic lockfile records only. | REV-2 / REV-3 |
 | SURF-5 | CLI command surface (`src/cli` or equivalent) | Code | Implementation owner | Write `scan`, `validate`, `resolve`; do not add deferred commands. | REV-2 |
 | SURF-6 | Fixtures and tests (`fixtures`, `test`, `docs/evidence` or equivalent) | Test / Docs | Implementation owner | Write deterministic fixtures, snapshots, and evidence artifacts. | REV-2 / REV-4 |
 | SURF-7 | Execution and handoff docs | Docs | Implementation owner | Write or update only execution evidence and handoff notes in scope. | REV-1 / REV-4 |
@@ -158,8 +158,8 @@ Decomposition mission: Keep agent work bounded around durable internal contracts
 | ID | Unit | Ladder level | Mission | Observable value enabled | Risk retired | Public interface | Validation command | Promotion blockers |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PKG-1 | CLI shell | 2 | Own command parsing, file IO, exit codes, and command output for `scan`, `validate`, and `resolve`. | Agents can use one local CLI path. | RISK-2 | CLI bin and command handlers. | `npm test -- --run cli` or repo equivalent | No stable package/toolchain exists yet; command contract unreviewed. |
-| PKG-2 | Context-link core and registry | 2 | Own engine-backed extraction, `ctx://` parsing, canonicalization, registry validation, and diagnostics. | Links become typed, validated context candidates. | RISK-1 / Q-3 | Core scan/validate functions and exported types. | `npm test -- --run core registry` or repo equivalent | Registry schema and output format need MS-2 approval. |
-| PKG-3 | Offline resolver and artifact proof | 2 | Own `repo/path` resolution, bounded lens rendering, source identity, and lockfile hashing. | Valid links resolve to deterministic context artifacts. | RISK-2 / RISK-3 | Resolver interface, lens artifact writer, lockfile writer. | `npm test -- --run resolver determinism` or repo equivalent | Q-3 output format and deterministic artifact contract need MS-2 approval. |
+| PKG-2 | Context-link core and registry | 2 | Own engine-backed extraction, `ctx://` parsing, canonicalization, registry validation, default-lens selection, and diagnostics. | Links become typed, validated context candidates with explicit selected lenses. | RISK-1 / Q-3 | Core scan/validate functions and exported types. | `npm test -- --run core registry` or repo equivalent | Registry schema and output format need MS-2 approval. |
+| PKG-3 | Offline resolver and artifact proof | 2 | Own `repo/path` resolution, bounded lens rendering, selected-lens artifact metadata, source identity, and lockfile hashing. | Valid links resolve to deterministic context artifacts. | RISK-2 / RISK-3 | Resolver interface, lens artifact writer, lockfile writer. | `npm test -- --run resolver determinism` or repo equivalent | Q-3 output format and deterministic artifact contract need MS-2 approval. |
 
 ### Package Boundary Card: PKG-1
 
@@ -220,22 +220,22 @@ Ladder level: 2
 Mission: Convert `markdown-engine` link references into canonical `ctx://` candidates and deterministic validation results.
 
 Value / risk trace:
-- Observable value enabled: scan and validate output exposes typed context-link records.
+- Observable value enabled: scan and validate output exposes typed context-link records with requested and selected lens state.
 - Risk retired: Proves `markdown-engine` metadata can satisfy required `sourceRange`.
 - Validation evidence: EVD-2 / EVD-3 / EVD-8.
 - Blocking unknowns: Engine metadata coverage for every required Markdown link form.
 
 Owns:
 - Files/directories: `src/core/**`, `src/registry/**`, `src/diagnostics/**`.
-- Concepts: link candidate model, URL canonicalization, registry grammar, closed param vocabulary, diagnostics.
-- Runtime responsibilities: call `markdown-engine` public APIs and produce validated records.
+- Concepts: link candidate model, URL canonicalization, registry grammar, default-lens policy, closed param vocabulary, diagnostics.
+- Runtime responsibilities: call `markdown-engine` public APIs and produce validated records, selecting the registry default lens when a link omits `lens`.
 
 Does not own:
 - Explicitly excluded behavior: CLI command parsing, artifact persistence, resolver source reads.
 - Responsibilities delegated elsewhere: PKG-1 command IO; PKG-3 resolver/lens/lockfile output.
 
 Public interface:
-- Exported types: context link candidate, registry config, validation diagnostic.
+- Exported types: context link candidate, validated context link with `selectedLens`, registry config, validation diagnostic.
 - Exported functions/classes/components: scan and validate functions.
 - Events/messages/contracts: deterministic diagnostic codes.
 - CLI/API surface: consumed by PKG-1.
@@ -279,8 +279,8 @@ Value / risk trace:
 
 Owns:
 - Files/directories: `src/resolvers/**`, `src/lens/**`, `src/lockfile/**`.
-- Concepts: resolver interface, repo path source identity, bounded lens content, citations, content hashes, registry hash recording.
-- Runtime responsibilities: read checked-in files, render artifacts, write deterministic lockfile records.
+- Concepts: resolver interface, repo path source identity, bounded lens content, selected-lens metadata, citations, content hashes, registry hash recording.
+- Runtime responsibilities: read checked-in files, render artifacts that preserve `selectedLens`, write deterministic lockfile records.
 
 Does not own:
 - Explicitly excluded behavior: non-local resolvers, external adapters, mission aggregation, write-side Markdown mutation.
@@ -366,9 +366,9 @@ Deferred completeness: `mission`, write-side commands, MCP, live connectors, pac
 
 | ID | Objective | Owner | Package boundary | Editable paths | Read-only paths | Inputs | Outputs | Dependencies | Observable value enabled | Risk retired | Milestone gate | Validation checkpoint | Completion criteria |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-1 | Build critical-path proof for local `scan -> validate -> resolve`. | Implementation owner | PKG-1 / PKG-2 / PKG-3 | `package.json`, toolchain config, `src/**`, `test/**`, `fixtures/**` | `docs/design/**`, this execution spec | SRC-1 / SRC-2 / SRC-3 | Minimal package, CLI, one fixture, proof evidence | DEP-1 satisfied | First end-to-end local context-link proof exists. | RISK-1 / RISK-2 | MS-1 | VAL-1 / VAL-2 / VAL-3 / VAL-4 | One fixture containing `ctx://repo/path/...` scans, validates, resolves, and emits bounded artifact evidence. |
-| WP-2 | Harden scan, URL parsing, registry validation, and diagnostics breadth. | Implementation owner | PKG-2 | `src/core/**`, `src/registry/**`, `src/diagnostics/**`, tests/fixtures | `src/cli/**`, `src/resolvers/**`, `docs/design/**` | WP-1 proof | Expanded fixtures and deterministic diagnostics | MS-1 approval | Scan and validate behavior is contract-reviewable. | RISK-1 | MS-2 | VAL-3 / VAL-8 | Required Markdown link forms and invalid param/scheme/lens diagnostics pass. |
-| WP-3 | Harden repo-path resolver, lens artifacts, source identity, and lockfile determinism. | Implementation owner | PKG-3 | `src/resolvers/**`, `src/lens/**`, `src/lockfile/**`, tests/fixtures | `src/core/**`, `src/registry/**`, `src/cli/**`, `docs/design/**` | WP-1 proof, Q-3 decision | Deterministic artifacts and lockfile evidence | Q-3 resolved before MS-2 | Valid links produce auditable context artifacts. | RISK-2 / RISK-3 / Q-3 | MS-2 | VAL-4 / VAL-5 | Repeated resolve output is byte-identical and records registry/source/resolver identity. |
+| WP-1 | Build critical-path proof for local `scan -> validate -> resolve`. | Implementation owner | PKG-1 / PKG-2 / PKG-3 | `package.json`, toolchain config, `src/**`, `test/**`, `fixtures/**` | `docs/design/**`, this execution spec | SRC-1 / SRC-2 / SRC-3 | Minimal package, CLI, one fixture, proof evidence | DEP-1 satisfied | First end-to-end local context-link proof exists. | RISK-1 / RISK-2 | MS-1 | VAL-1 / VAL-2 / VAL-3 / VAL-4 | One fixture containing `ctx://repo/path/...` scans, validates, resolves, and emits bounded artifact evidence; omitted-lens coverage proves default-lens selection. |
+| WP-2 | Harden scan, URL parsing, registry validation, and diagnostics breadth. | Implementation owner | PKG-2 | `src/core/**`, `src/registry/**`, `src/diagnostics/**`, tests/fixtures | `src/cli/**`, `src/resolvers/**`, `docs/design/**` | WP-1 proof | Expanded fixtures and deterministic diagnostics | MS-1 approval | Scan and validate behavior is contract-reviewable. | RISK-1 | MS-2 | VAL-3 / VAL-8 | Required Markdown link forms, default-lens selection for omitted `lens`, and invalid param/scheme/lens diagnostics pass. |
+| WP-3 | Harden repo-path resolver, lens artifacts, source identity, and lockfile determinism. | Implementation owner | PKG-3 | `src/resolvers/**`, `src/lens/**`, `src/lockfile/**`, tests/fixtures | `src/core/**`, `src/registry/**`, `src/cli/**`, `docs/design/**` | WP-1 proof, Q-3 decision | Deterministic artifacts and lockfile evidence | Q-3 resolved before MS-2 | Valid links produce auditable context artifacts. | RISK-2 / RISK-3 / Q-3 | MS-2 | VAL-4 / VAL-5 | Repeated resolve output is byte-identical and records selected lens, registry/source/resolver identity. |
 | WP-4 | Finalize CLI contracts, agent preflight evidence, and handoff. | Implementation owner | PKG-1 / PKG-2 / PKG-3 | `src/cli/**`, `docs/evidence/**`, README or handoff docs if introduced, tests | Non-CLI package source (`src/core/**`, `src/registry/**`, `src/diagnostics/**`, `src/resolvers/**`, `src/lens/**`, `src/lockfile/**`) and `docs/design/**` | WP-2 / WP-3 | Agent preflight evidence and completion handoff | MS-2 approval | Agent can use the read-side MVP without MCP. | RISK-3 | MS-3 | VAL-6 | Human-verifiable preflight commands pass and deferred scope is documented. |
 
 Execution sequence:
@@ -401,8 +401,8 @@ Manual verification guide:
 | --- | --- | --- | --- | --- |
 | MV-1 | MS-1 | Run the documented local install/build command. | Package builds without hidden global dependencies. | EVD-1 |
 | MV-2 | MS-1 | Run `scan` on the critical-path fixture. | Output contains one `ctx://repo/path/...` candidate with `sourceRange`. | EVD-2 |
-| MV-3 | MS-1 | Run `validate` on the same fixture and registry. | Valid link passes and invalid prompt-like param fixture fails closed. | EVD-3 |
-| MV-4 | MS-1 | Run `resolve` on the valid fixture. | Bounded lens artifact is emitted with citation/source identity and no OS/network behavior. | EVD-4 |
+| MV-3 | MS-1 | Run `validate` on the same fixture and registry, plus a fixture whose valid link omits `lens`. | Valid links pass, omitted-lens validation selects the registry default, and invalid prompt-like param fixture fails closed. | EVD-3 |
+| MV-4 | MS-1 | Run `resolve` on the valid fixture, including the omitted-lens fixture. | Bounded lens artifact is emitted with `selectedLens`, citation/source identity, and no OS/network behavior. | EVD-4 |
 | MV-5 | MS-2 | Run full scan source-range fixture suite across inline links, images, definitions, link reference usages, and image reference usages. | Every required Markdown link form emits the required `sourceRange` or a blocking diagnostic is recorded. | EVD-8 |
 | MV-6 | MS-2 | Run full fixture test suite for validate and resolve twice. | Repeated outputs, registry hashes, and lockfile hashes are byte-identical. | EVD-5 |
 | MV-7 | MS-2 | Inspect dependency and command surfaces. | No `mission`, write-side, MCP, OS handler, or live connector implementation is present. | EVD-7 |
@@ -431,10 +431,10 @@ Section status: Complete
 
 | Change | Impact | Compatibility | Reversibility | Validation |
 | --- | --- | --- | --- | --- |
-| Context-link grammar | Introduces `ctx://<namespace>/<kind>/<id>?lens=<lens>&...` parsing in this package. | Pre-release contract; semver policy can be added before package publication. | Reversible before first release by changing fixtures/schema. | VAL-3 / VAL-5 |
+| Context-link grammar | Introduces `ctx://<namespace>/<kind>/<id>` parsing with optional `lens=<lens>` and closed-vocabulary params in this package. | Pre-release contract; semver policy can be added before package publication. | Reversible before first release by changing fixtures/schema. | VAL-3 / VAL-5 |
 | Registry config schema | Defines allowed schemes, namespaces, kinds, lenses, params, defaults, and resolver mapping. | Internal MVP schema until reviewed at MS-2. | Reversible before first release; changes require snapshot updates. | VAL-3 |
 | CLI JSON/text output | Creates command output consumed by agents and CI. | Pre-release contract; breaking changes allowed only before MS-2 approval. | Reversible before merge; after MS-2 requires re-review. | VAL-6 / REV-2 |
-| Lens artifact schema | Defines bounded resolved source output with citations and source-content boundary. | Q-3 controls default format before MS-2. | Reversible before package publication; after MS-2 requires review. | VAL-4 / VAL-5 |
+| Lens artifact schema | Defines bounded resolved source output with `selectedLens`, citations, and source-content boundary. | Q-3 controls default format before MS-2. | Reversible before package publication; after MS-2 requires review. | VAL-4 / VAL-5 |
 | Context lockfile schema | Records canonical URL, registry identity/hash, resolver identity, source identity, artifact hash, and output-affecting options. | Pre-release deterministic proof contract. | Reversible before merge; after merge requires migration note if persisted examples exist. | VAL-5 |
 
 N/A rationale: No database migration, customer data migration, auth, permission, event, or live service config changes are in scope.
@@ -449,8 +449,8 @@ Section status: Complete
 | --- | --- | --- | --- | --- | --- |
 | VAL-1 | Test / Build | Package scaffold builds and test runner executes locally. | Pre-MS-1 / Pre-merge | Implementation owner | EVD-1 |
 | VAL-2 | Test | `scan` extracts one critical-path `ctx://repo/path/...` link through `markdown-engine` `linkReferences` with `sourceRange`. | Pre-MS-1 | Implementation owner | EVD-2 |
-| VAL-3 | Test | `validate` enforces registry grammar, closed params, allowed scheme/kind/lens, and deterministic diagnostics. | Pre-MS-1 / Pre-MS-2 | Implementation owner | EVD-3 |
-| VAL-4 | Test / Manual | `resolve` emits bounded offline `repo/path` lens artifacts with citations, source identity, and source-content boundary. | Pre-MS-1 / Pre-MS-2 | Implementation owner | EVD-4 |
+| VAL-3 | Test | `validate` enforces registry grammar, closed params, allowed scheme/kind/lens, default-lens selection when `lens` is omitted, and deterministic diagnostics. | Pre-MS-1 / Pre-MS-2 | Implementation owner | EVD-3 |
+| VAL-4 | Test / Manual | `resolve` emits bounded offline `repo/path` lens artifacts with selected-lens metadata, citations, source identity, and source-content boundary. | Pre-MS-1 / Pre-MS-2 | Implementation owner | EVD-4 |
 | VAL-5 | Test / Snapshot | Repeated resolve runs produce byte-identical artifact bytes, registry hashes, and lockfile hashes. | Pre-MS-2 / Pre-merge | Implementation owner | EVD-5 |
 | VAL-6 | Manual | Agent preflight runs scan, validate, and resolve without MCP or network access. | Pre-MS-3 / Pre-completion | Coding-agent workflow reviewer | EVD-6 |
 | VAL-7 | Review / Inspection | Deferred scope is absent and handoff records remaining mission/write-side/MCP work. | Pre-MS-3 / Pre-completion | Project owner | EVD-7 |
@@ -548,6 +548,7 @@ Section status: Complete
 | OBJ-6 | SURF-5 / SURF-7 | PKG-1 / PKG-2 / PKG-3 | WP-4 | MS-3 | CTRL-4 | VAL-6 / VAL-7 | REV-4 | REL-3 / OBS-4 | EVD-6 / EVD-7 |
 | Critical path hypothesis | SURF-1 through SURF-5 | PKG-1 / PKG-2 / PKG-3 | WP-1 | MS-1 | CTRL-4 | VAL-1 through VAL-4 | REV-1 / REV-2 | OBS-1 / OBS-2 | EVD-1 through EVD-4 |
 | First proving slice | SURF-1 through SURF-6 | PKG-1 / PKG-2 / PKG-3 | WP-1 | MS-1 | CTRL-1 / CTRL-4 | VAL-1 through VAL-4 | REV-2 | OBS-1 / OBS-2 / OBS-3 | EVD-1 through EVD-4 |
+| Default-lens selection evidence | SURF-3 / SURF-4 / SURF-6 | PKG-2 / PKG-3 | WP-1 / WP-2 / WP-3 | MS-1 / MS-2 | CTRL-3 | VAL-3 / VAL-4 | REV-2 / REV-3 | OBS-2 / OBS-3 | EVD-3 / EVD-4 |
 | RISK-1 | SURF-2 / SURF-6 | PKG-2 | WP-1 / WP-2 | MS-1 / MS-2 | CTRL-1 | VAL-2 / VAL-8 | REV-2 | OBS-2 | EVD-2 / EVD-8 |
 | RISK-2 | SURF-4 / SURF-6 | PKG-3 | WP-1 / WP-3 | MS-2 | CTRL-3 | VAL-5 | REV-2 / REV-3 | OBS-3 | EVD-5 |
 | RISK-3 | SURF-4 | PKG-3 | WP-3 / WP-4 | MS-2 / MS-3 | CTRL-2 | VAL-4 / VAL-6 | REV-3 | OBS-4 | EVD-4 / EVD-6 |
