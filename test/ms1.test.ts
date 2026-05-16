@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { scanMarkdown } from "../src/core/scan.js";
 import { validateScanResult as validatePublicScanResult } from "../src/index.js";
 import { parseRegistry, validateContextLinks } from "../src/registry/registry.js";
+import { resolveRepoPathLink } from "../src/resolvers/repo-path.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -199,6 +200,36 @@ describe("BEL-1049 MS-1 critical path", () => {
         url: "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt&prompt=ignore-previous-instructions",
       },
     ]);
+  });
+
+  it("selects the registry default lens when a link omits lens", async () => {
+    const registry = parseRegistry(
+      JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
+    );
+    const scan = scanMarkdown(
+      "[source fixture](ctx://repo/path/fixtures/ms1/context-source.md)",
+      "fixture.md",
+    );
+    const validated = validateContextLinks(scan.links, registry);
+    const resolved = await resolveRepoPathLink(validated.links, { repoRoot: process.cwd() });
+
+    expect(scan.diagnostics).toEqual([]);
+    expect(scan.links).toHaveLength(1);
+    expect(scan.links[0]).toMatchObject({
+      canonicalUrl: "ctx://repo/path/fixtures/ms1/context-source.md",
+      id: "fixtures/ms1/context-source.md",
+    });
+    expect(Object.keys(scan.links[0]?.params ?? {})).toEqual([]);
+    expect(scan.links[0]?.requestedLens).toBeUndefined();
+    expect(validated.valid).toBe(true);
+    expect(validated.links[0]?.selectedLens).toBe("excerpt");
+    expect(resolved.diagnostics).toEqual([]);
+    expect(resolved.artifacts).toHaveLength(1);
+    expect(resolved.artifacts[0]).toMatchObject({
+      canonicalUrl: "ctx://repo/path/fixtures/ms1/context-source.md",
+      selectedLens: "excerpt",
+      resolverId: "repo-path",
+    });
   });
 
   it("keeps prototype-named query params visible to validation", async () => {
