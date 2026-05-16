@@ -219,6 +219,7 @@ External service expectations: The core CLI runs locally, requires no long-lived
 | ACC-8 | Resolve or aggregate a fixture whose source text contains hostile agent instructions. | Lens and mission output retains hostile text only as attributed source data with citations and trust labels, and no renderer output promotes that source text into agent operating instructions. | REQ-15 / FUNC-3 / FUNC-4 |
 | ACC-9 | After the read-side MVP, run `insert-link` with an explicit write option and valid target location. | Command writes one normalized Markdown context link or emits a patch proposal when patch mode is selected, and validation recognizes the inserted link. | REQ-12 / FUNC-9 |
 | ACC-10 | Run an optional MCP adapter contract fixture against scan, resolve, and mission behavior. | Adapter responses use the same core schema versions, field contracts, diagnostics shape, and output semantics as CLI/core outputs without introducing MCP-only schema drift. | REQ-10 / FLOW-7 / FUNC-8 |
+| ACC-11 | Resolve `ctx://repo/path/fixtures/ms1/context-source.md` when the registry declares `excerpt` as the `repo/path` default lens. | Validation succeeds without a requested lens, resolution emits a bounded lens artifact, output metadata records `selectedLens: "excerpt"`, and diagnostics are empty. | REQ-11 / REQ-13 / FUNC-6 |
 
 Section status: Complete
 
@@ -237,9 +238,9 @@ Section status: Complete
 | REQ-9 | FLOW-2 / FLOW-3 / FUNC-3 / FUNC-7 | ACC-2 / ACC-6 | Links remain inert through all operations. |
 | REQ-15 | FLOW-1 / FLOW-3 / FUNC-3 / FUNC-4 | ACC-8 | Source-derived content remains attributed data even when it contains hostile instructions. |
 | REQ-10 | FLOW-6 / FLOW-7 / FUNC-8 | ACC-3 / ACC-10 | Schema versions make future adapters compatible. |
-| REQ-11 | FLOW-1 / FUNC-6 | ACC-4 | Lens defaults are explicit registry behavior. |
+| REQ-11 | FLOW-1 / FUNC-6 | ACC-11 | Lens defaults are explicit registry behavior. |
 | REQ-12 | FLOW-4 / FLOW-5 / FUNC-5 / FUNC-9 | ACC-5 / ACC-9 | Write-side behavior is later milestone scope and non-mutating by default. |
-| REQ-13 | FLOW-2 / FUNC-2 / FUNC-5 / FUNC-6 | ACC-2 / ACC-5 | Diagnostics make resolver decisions transparent. |
+| REQ-13 | FLOW-2 / FUNC-2 / FUNC-5 / FUNC-6 | ACC-2 / ACC-5 / ACC-11 | Diagnostics and output metadata make resolver decisions transparent. |
 | REQ-14 | FUNC-1 | ACC-7 | Performance bound applies to scan. |
 | REQ-16 | FLOW-1 / FUNC-4 | ACC-4 | Mission aggregation is later milestone scope after read-side deterministic proof. |
 
@@ -401,7 +402,7 @@ Section status: Complete
 | --- | --- | --- | --- |
 | VAL-1 | Test | `markdown-engine` integration extracts context links with labels, URLs, source ranges, and reference-definition metadata from public `linkReferences` records. | REQ-1 / FUNC-1 / TECH-1 / TECH-2 |
 | VAL-2 | Test | Registry grammar validates schemes, kinds, id patterns, lenses, params, and default-lens selection. | REQ-2 / REQ-11 / FUNC-2 / FUNC-6 / TECH-3 / TECH-5 |
-| VAL-3 | Test | Supported context links resolve into bounded lens artifacts with expected fields and citations. | REQ-4 / FUNC-3 / FUNC-4 / TECH-6 / TECH-7 |
+| VAL-3 | Test | Supported context links resolve into bounded lens artifacts with expected fields, selected-lens metadata, and citations. | REQ-4 / REQ-11 / FUNC-3 / FUNC-4 / FUNC-6 / TECH-5 / TECH-6 / TECH-7 |
 | VAL-4 | Test / Analysis | Repeated offline `ctx://repo/path/...` resolution produces byte-identical lens artifacts, identical registry hashes, and identical lockfile hashes for identical inputs under the canonicalization rules; later mission tests add byte-identical mission packets under the mission aggregation rules. | REQ-4 / REQ-6 / REQ-7 / REQ-8 / REQ-16 / FUNC-3 / FUNC-4 / TECH-6 / TECH-7 / TECH-8 / TECH-13 |
 | VAL-5 | Test / Inspection | Prompt-like params, unknown params, hostile source-content instructions, OS-handler execution attempts, and unsupported resolvers fail closed or remain bounded as attributed source data. | REQ-3 / REQ-9 / REQ-15 / FUNC-3 / FUNC-4 / FUNC-7 / TECH-4 / TECH-6 / TECH-7 / TECH-11 / TECH-14 |
 | VAL-6 | Test | CLI commands emit documented text or JSON output, diagnostics, and exit codes; later write-side tests verify explicit `insert-link` write behavior and non-mutating suggestion behavior. | REQ-5 / REQ-12 / REQ-13 / FUNC-1 / FUNC-2 / FUNC-5 / FUNC-9 / TECH-9 / TECH-10 |
@@ -417,7 +418,7 @@ Section status: Complete
 | FUNC-3 | TECH-5 / TECH-6 / TECH-7 / TECH-8 / TECH-9 / TECH-14 | VAL-3 / VAL-4 / VAL-5 |
 | FUNC-4 | TECH-5 / TECH-6 / TECH-7 / TECH-8 / TECH-9 / TECH-11 / TECH-13 / TECH-14 | VAL-3 / VAL-4 / VAL-5 / VAL-7 |
 | FUNC-5 | TECH-9 / TECH-10 | VAL-6 |
-| FUNC-6 | TECH-3 / TECH-5 | VAL-2 |
+| FUNC-6 | TECH-3 / TECH-5 | VAL-2 / VAL-3 |
 | FUNC-7 | TECH-4 / TECH-9 | VAL-5 / VAL-6 |
 | FUNC-8 | TECH-12 | VAL-8 / VAL-9 |
 | FUNC-9 | TECH-9 / TECH-10 | VAL-6 |
@@ -432,7 +433,7 @@ Section status: Complete
 | REQ-9 | TECH-4 / TECH-6 / TECH-9 | VAL-5 |
 | REQ-15 | TECH-7 / TECH-11 / TECH-14 | VAL-5 / VAL-9 |
 | REQ-10 | TECH-3 / TECH-7 / TECH-8 / TECH-12 | VAL-8 / VAL-9 |
-| REQ-11 | TECH-3 / TECH-5 | VAL-2 |
+| REQ-11 | TECH-3 / TECH-5 | VAL-2 / VAL-3 |
 | REQ-12 | TECH-10 | VAL-6 |
 | REQ-13 | TECH-3 / TECH-9 | VAL-6 / VAL-9 |
 | REQ-14 | TECH-1 / TECH-2 / TECH-9 | VAL-10 |
