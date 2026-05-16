@@ -14,8 +14,12 @@
     }
   },
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "test": "npm run build && vitest run \"--exclude=.worktrees/**\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

@@ -6,6 +6,7 @@ export type {
   ResolveResult,
   ScanResult,
   SourceRange,
+  ValidatedContextLink,
   ValidateResult,
 } from "./core/types.js";
 export { scanMarkdown } from "./core/scan.js";
