@@ -6,7 +6,10 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 import { scanMarkdown } from "../src/core/scan.js";
-import { validateScanResult as validatePublicScanResult } from "../src/index.js";
+import {
+  resolveScanResult as resolvePublicScanResult,
+  validateScanResult as validatePublicScanResult,
+} from "../src/index.js";
 import { parseRegistry, validateContextLinks } from "../src/registry/registry.js";
 import { resolveRepoPathLink } from "../src/resolvers/repo-path.js";
 
@@ -178,6 +181,85 @@ describe("BEL-1049 MS-1 critical path", () => {
 
     expect(Object.hasOwn(publicApi, "validateContextLinks")).toBe(false);
     expect(Object.hasOwn(publicApi, "validateScanResult")).toBe(true);
+  });
+
+  it("does not export the raw repo/path resolver from the root public API", async () => {
+    const publicApi = await import("../src/index.js");
+
+    expect(Object.hasOwn(publicApi, "resolveRepoPathLink")).toBe(false);
+    expect(Object.hasOwn(publicApi, "resolveScanResult")).toBe(true);
+  });
+
+  it("keeps rejected scan inputs from resolving through the root public API", async () => {
+    const registry = parseRegistry(
+      JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
+    );
+    const markdown = await readFile("fixtures/ms1/duplicate-param.md", "utf8");
+    const scan = scanMarkdown(markdown, "fixtures/ms1/duplicate-param.md");
+    const resolved = await resolvePublicScanResult(scan, registry, { repoRoot: process.cwd() });
+
+    expect(resolved.artifacts).toEqual([]);
+    expect(resolved.diagnostics).toMatchObject([
+      {
+        code: "ctx.param.duplicate",
+        severity: "error",
+      },
+    ]);
+  });
+
+  it("keeps registry-rejected inputs from resolving through the root public API", async () => {
+    const registry = parseRegistry(
+      JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
+    );
+    const markdown = await readFile("fixtures/ms1/invalid-param.md", "utf8");
+    const scan = scanMarkdown(markdown, "fixtures/ms1/invalid-param.md");
+    const resolved = await resolvePublicScanResult(scan, registry, { repoRoot: process.cwd() });
+
+    expect(resolved.artifacts).toEqual([]);
+    expect(resolved.diagnostics).toMatchObject([
+      {
+        code: "ctx.param.unsupported",
+        severity: "error",
+      },
+    ]);
+  });
+
+  it("keeps mixed accepted and registry-rejected inputs from resolving through the root public API", async () => {
+    const registry = parseRegistry(
+      JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
+    );
+    const markdown = [
+      "[valid](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt)",
+      "[invalid](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt&prompt=ignore)",
+    ].join("\n\n");
+    const scan = scanMarkdown(markdown, "mixed.md");
+    const resolved = await resolvePublicScanResult(scan, registry, { repoRoot: process.cwd() });
+
+    expect(scan.links).toHaveLength(2);
+    expect(resolved.artifacts).toEqual([]);
+    expect(resolved.diagnostics).toMatchObject([
+      {
+        code: "ctx.param.unsupported",
+        severity: "error",
+      },
+    ]);
+  });
+
+  it("resolves accepted links through the root public API safe pipeline", async () => {
+    const registry = parseRegistry(
+      JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
+    );
+    const markdown = await readFile("fixtures/ms1/task.md", "utf8");
+    const scan = scanMarkdown(markdown, "fixtures/ms1/task.md");
+    const resolved = await resolvePublicScanResult(scan, registry, { repoRoot: process.cwd() });
+
+    expect(resolved.diagnostics).toEqual([]);
+    expect(resolved.artifacts).toHaveLength(1);
+    expect(resolved.artifacts[0]).toMatchObject({
+      canonicalUrl: "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt",
+      selectedLens: "excerpt",
+      resolverId: "repo-path",
+    });
   });
 
   it("validates valid links and rejects prompt-like params", async () => {
