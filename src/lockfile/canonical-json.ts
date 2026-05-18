@@ -27,11 +27,13 @@ function cloneCanonicalJsonValue(value: unknown): CanonicalJsonValue {
   assertCanonicalJsonValue(value, "$");
 
   if (Array.isArray(value)) {
-    return value.map(cloneCanonicalJsonValue);
+    return Array.from({ length: value.length }, (_, index) =>
+      cloneCanonicalJsonValue(value[index]),
+    );
   }
 
   if (isRecord(value)) {
-    const cloned: CanonicalJsonObject = {};
+    const cloned = Object.create(null) as CanonicalJsonObject;
 
     for (const key of Object.keys(value).sort(compareCodeUnits)) {
       cloned[key] = cloneCanonicalJsonValue(value[key]);
@@ -60,9 +62,13 @@ function assertCanonicalJsonValue(value: unknown, path: string): asserts value i
   }
 
   if (Array.isArray(value)) {
-    value.forEach((item, index) => {
-      assertCanonicalJsonValue(item, `${path}[${index}]`);
-    });
+    for (let index = 0; index < value.length; index += 1) {
+      if (!(index in value)) {
+        throw new Error(`Canonical JSON array at ${path} must not contain empty slots.`);
+      }
+
+      assertCanonicalJsonValue(value[index], `${path}[${index}]`);
+    }
     return;
   }
 

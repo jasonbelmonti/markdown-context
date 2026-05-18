@@ -34,6 +34,9 @@ describe("lockfile contract", () => {
     expect(() => serializeCanonicalJson(new Date("2026-05-18T00:00:00Z"))).toThrow(
       "Unsupported canonical JSON value",
     );
+    expect(() => serializeCanonicalJson(new Array(1))).toThrow(
+      "must not contain empty slots",
+    );
   });
 
   it("clones canonical JSON objects so caller mutation cannot change records", () => {
@@ -57,6 +60,35 @@ describe("lockfile contract", () => {
 
     expect(record.sourceIdentity.path).toBe("a.md");
     expect(record.outputOptions.excerptMaxBytes).toBe(4096);
+  });
+
+  it("preserves __proto__ as canonical JSON data when cloning records", () => {
+    const sourceIdentity = JSON.parse(
+      '{"kind":"repo/path","__proto__":"source-prototype-data"}',
+    ) as { kind: "repo/path"; __proto__: string };
+    const outputOptions = JSON.parse(
+      '{"artifactFormat":"json","__proto__":"option-prototype-data"}',
+    ) as { artifactFormat: "json"; __proto__: string };
+    const record = createContextLockfileRecord({
+      canonicalUrl: "ctx://repo/path/a.md?lens=excerpt",
+      selectedLens: "excerpt",
+      artifactPath: ".markdown-context/lenses/a.json",
+      artifactHash: hashCanonicalJson({ artifact: "a" }),
+      registry: fixtureRegistry(),
+      resolverId: "repo-path",
+      resolverVersion: "0.1.0",
+      sourceIdentity,
+      sourceHash: hashCanonicalJson({ source: "a" }),
+      outputOptions,
+    });
+
+    expect(Object.keys(record.sourceIdentity)).toEqual(["__proto__", "kind"]);
+    expect(Object.keys(record.outputOptions)).toEqual(["__proto__", "artifactFormat"]);
+    expect(record.sourceIdentity.__proto__).toBe("source-prototype-data");
+    expect(record.outputOptions.__proto__).toBe("option-prototype-data");
+    expect(serializeCanonicalJson(record.sourceIdentity)).toBe(
+      '{"__proto__":"source-prototype-data","kind":"repo/path"}\n',
+    );
   });
 
   it("requires source identity to remain a canonical JSON object with a kind", () => {

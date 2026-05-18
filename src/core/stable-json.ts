@@ -15,7 +15,10 @@ function serializeJsonValue(value: unknown, pretty: boolean, depth: number): str
 }
 
 function serializeArray(value: readonly unknown[], pretty: boolean, depth: number): string {
-  const items = value.map((item) => serializeJsonValue(item, pretty, depth + 1) ?? "null");
+  const items = Array.from({ length: value.length }, (_, index) =>
+    serializeJsonValue(value[index], pretty, depth + 1) ?? "null",
+  );
+
   if (!pretty) {
     return `[${items.join(",")}]`;
   }

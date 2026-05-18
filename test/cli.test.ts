@@ -203,6 +203,11 @@ describe("CLI operator contract", () => {
     );
   });
 
+  it("serializes sparse arrays as valid JSON null entries", () => {
+    expect(stableJson(new Array(2))).toBe("[null,null]\n");
+    expect(stableJson(new Array(2), true)).toBe("[\n  null,\n  null\n]\n");
+  });
+
   it("emits byte-identical resolve JSON across repeated runs", async () => {
     const args = [
       "dist/cli/index.js",
