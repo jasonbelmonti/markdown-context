@@ -29,10 +29,11 @@ Recommendation: Accept this audit track with follow-up hardening work recorded b
 
 The current supported scanner -> registry -> resolver path prevents parent traversal and symlink escapes from reading outside `repoRoot`, rejects malformed and unsupported URL input before artifact rendering, and marks returned source text as untrusted source data. The BEL-1059 public raw resolver exposure has been resolved by BEL-1062: the root package exports `resolveScanResult`, not `resolveRepoPathLink`.
 
-Two residual risks should be tracked as follow-up rather than treated as blockers for this audit deliverable:
+Three residual risks should be tracked as follow-up rather than treated as blockers for this audit deliverable:
 
 - A valid `ctx://repo/path/...` link can project any real file inside the chosen `repoRoot`; the registry does not yet constrain path ids by allowlist, denylist, glob, or source class.
 - The resolver reads and normalizes the full source file before excerpt bounding, so very large files are loaded into memory even though the emitted artifact content is capped.
+- The realpath containment check and later file read are separate filesystem operations, so containment assumes a stable worktree while resolution is running.
 
 ## Boundary Map
 
@@ -76,7 +77,7 @@ Security judgment:
 
 ### Repo/path containment and source reads
 
-Status: Accepted for filesystem escape prevention; follow-up for broad in-root reads and overlarge source reads.
+Status: Accepted for filesystem escape prevention in stable worktrees; follow-up for broad in-root reads, overlarge source reads, and concurrent modification races.
 
 Evidence:
 
@@ -84,15 +85,17 @@ Evidence:
 - `src/resolvers/repo-path/source.ts:87` through `src/resolvers/repo-path/source.ts:95` returns `ctx.repoPath.unresolved` when the repo root or candidate cannot resolve.
 - `src/resolvers/repo-path/source.ts:98` through `src/resolvers/repo-path/source.ts:105` rejects candidates whose real path is outside the real repo root.
 - `src/resolvers/repo-path/source.ts:40` reads the resolved file only after the realpath containment check.
+- `src/resolvers/repo-path/source.ts:40` and `src/resolvers/repo-path/source.ts:87` through `src/resolvers/repo-path/source.ts:90` are separate filesystem operations; the resolver does not hold an opened file descriptor across containment validation and content read.
 - `test/repo-path.test.ts:146` covers symlink escape rejection.
 - `test/repo-path.test.ts:168` covers lexical `../` escape rejection.
 - `test/ms1.test.ts:486` covers unresolved repo paths through the CLI.
 
 Security judgment:
 
-- Parent traversal and symlink escapes are blocked before content is read.
+- Parent traversal and symlink escapes are blocked before content is read when the repository tree remains stable during resolution.
 - Missing files fail closed as diagnostics and produce no artifacts.
 - The resolver still reads any valid in-root path selected by a validated link. This is expected for `repo/path`, but it should be treated as a trust contract: callers must not run resolution over untrusted Markdown against a broad repo root that contains files they would not intentionally expose as bounded context.
+- In environments where another local process can mutate `repoRoot` while resolution is running, the current check-then-read sequence has a symlink replacement race. That is outside the stable-worktree guarantee and should be hardened before claiming containment under concurrent local mutation.
 
 ### Bounded artifact projection and source-content boundary
 
@@ -179,9 +182,30 @@ Recommendation:
 - If full-source hashing remains required, make that an explicit tradeoff and cap or skip hashes beyond a documented source-size threshold.
 - Add regression coverage for over-limit source handling once the policy is selected.
 
+### F-3: Realpath containment is check-then-read and assumes a stable worktree
+
+Severity: Follow-up filesystem hardening.
+
+Evidence:
+
+- `src/resolvers/repo-path/source.ts:87` through `src/resolvers/repo-path/source.ts:90` resolves the repository root and candidate path through `realpath`.
+- `src/resolvers/repo-path/source.ts:98` through `src/resolvers/repo-path/source.ts:105` checks whether the real candidate is inside the real repository root.
+- `src/resolvers/repo-path/source.ts:107` returns the candidate path string after containment validation.
+- `src/resolvers/repo-path/source.ts:40` later calls `readFile(resolvedPath.path, "utf8")`.
+
+Impact:
+
+- The accepted symlink escape control is valid for stable worktrees and normal agent/CLI preflight use.
+- If a concurrent local process can replace the checked path, or one of its parent directories, after `realpath` validation and before `readFile`, the resolver can follow a newly introduced symlink during the read.
+
+Recommendation:
+
+- Before claiming containment under concurrent local mutation, harden the source read path by opening and validating the file without following symlinks, or by using an equivalent open/stat/read sequence that verifies the opened object after acquisition.
+- Add regression or stress coverage for the selected race-hardening strategy where practical.
+
 ## Accepted Controls
 
-- Path containment uses filesystem `realpath` for both `repoRoot` and candidate paths before read.
+- In stable worktrees, path containment uses filesystem `realpath` for both `repoRoot` and candidate paths before read.
 - Missing files, malformed paths, duplicate decoded params, unsupported params, unsupported lenses, and unsupported resources produce diagnostics and no artifact for the rejected link.
 - Root package consumers are guided through `resolveScanResult`, which validates the complete scan result and returns zero artifacts on validation failure.
 - Emitted source text is bounded to 4096 UTF-8 bytes and tagged as `untrusted-source-data` / `source-data`.
