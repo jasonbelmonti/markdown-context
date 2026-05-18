@@ -202,6 +202,35 @@ describe("CLI operator contract", () => {
       '{"10":"ten","2":"two","A":2,"a":1,"nested":{"10":"ten","2":"two","A":2,"a":1,"z":3},"z":3}\n',
     );
   });
+
+  it("emits byte-identical resolve JSON across repeated runs", async () => {
+    const args = [
+      "dist/cli/index.js",
+      "resolve",
+      "fixtures/ms1/task.md",
+      "--registry",
+      "fixtures/ms1/registry.json",
+      "--repo-root",
+      ".",
+      "--pretty",
+    ];
+    const first = await runCli(args);
+    const second = await runCli(args);
+
+    expect(first.stderr).toBe("");
+    expect(second.stderr).toBe("");
+    expect(second.stdout).toBe(first.stdout);
+    expect(JSON.parse(first.stdout)).toMatchObject({
+      artifacts: [
+        {
+          canonicalUrl: "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt",
+          contentHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+          resolverId: "repo-path",
+        },
+      ],
+      diagnostics: [],
+    });
+  });
 });
 
 async function runCli(args: string[]): Promise<{ stdout: string; stderr: string }> {

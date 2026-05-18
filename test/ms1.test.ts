@@ -120,6 +120,23 @@ describe("BEL-1049 MS-1 critical path", () => {
     );
   });
 
+  it("canonicalizes equivalent query parameter order to the same URL identity", () => {
+    const first = scanMarkdown(
+      "[source](ctx://repo/path/fixtures/ms1/context-source.md?z=last&lens=excerpt&A=upper&a=lower)",
+    );
+    const second = scanMarkdown(
+      "[source](ctx://repo/path/fixtures/ms1/context-source.md?a=lower&A=upper&z=last&lens=excerpt)",
+    );
+
+    expect(first.diagnostics).toEqual([]);
+    expect(second.diagnostics).toEqual([]);
+    expect(first.links[0]?.canonicalUrl).toBe(second.links[0]?.canonicalUrl);
+    expect(first.links[0]?.canonicalUrl).toBe(
+      "ctx://repo/path/fixtures/ms1/context-source.md?A=upper&a=lower&lens=excerpt&z=last",
+    );
+    expect(Object.keys(first.links[0]?.params ?? {})).toEqual(["A", "a", "z"]);
+  });
+
   it("reports malformed ctx path escapes as scan diagnostics", () => {
     const scan = scanMarkdown("[bad](ctx://repo/path/%E0%A4%A?lens=excerpt)");
 
