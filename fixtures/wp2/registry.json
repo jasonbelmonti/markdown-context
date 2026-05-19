@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "markdown-context.registry.v0",
+  "registryId": "wp2-local",
+  "registryVersion": "0.2.0",
+  "resources": [
+    {
+      "scheme": "ctx",
+      "namespace": "repo",
+      "kind": "path",
+      "idPattern": "^fixtures/wp2/[A-Za-z0-9._/-]+\\.md$",
+      "defaultLens": "excerpt",
+      "lenses": ["excerpt", "summary"],
+      "params": ["section"]
+    }
+  ]
+}

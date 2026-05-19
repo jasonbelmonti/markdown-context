@@ -81,7 +81,7 @@ function canonicalRegistrySnapshot(registry: Registry): CanonicalJsonObject {
 }
 
 function canonicalRegistryResource(resource: RegistryResource): CanonicalJsonObject {
-  return {
+  const snapshot: CanonicalJsonObject = {
     defaultLens: resource.defaultLens,
     kind: resource.kind,
     lenses: [...resource.lenses].sort(compareCodeUnits),
@@ -89,6 +89,12 @@ function canonicalRegistryResource(resource: RegistryResource): CanonicalJsonObj
     params: [...(resource.params ?? [])].sort(compareCodeUnits),
     scheme: resource.scheme,
   };
+
+  if (resource.idPattern !== undefined) {
+    snapshot.idPattern = resource.idPattern;
+  }
+
+  return snapshot;
 }
 
 function compareRegistryResources(left: RegistryResource, right: RegistryResource): number {
