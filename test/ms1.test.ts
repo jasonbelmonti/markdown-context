@@ -250,10 +250,14 @@ describe("BEL-1049 MS-1 critical path", () => {
       "[invalid](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt&prompt=ignore)",
     ].join("\n\n");
     const scan = scanMarkdown(markdown, "mixed.md");
-    const resolved = await resolvePublicScanResult(scan, registry, { repoRoot: process.cwd() });
+    const resolved = await resolvePublicScanResult(scan, registry, {
+      repoRoot: process.cwd(),
+      lockfile: true,
+    });
 
     expect(scan.links).toHaveLength(2);
     expect(resolved.artifacts).toEqual([]);
+    expect(resolved.lockfile?.records).toEqual([]);
     expect(resolved.diagnostics).toMatchObject([
       {
         code: "ctx.param.unsupported",
@@ -268,15 +272,120 @@ describe("BEL-1049 MS-1 critical path", () => {
     );
     const markdown = await readFile("fixtures/ms1/task.md", "utf8");
     const scan = scanMarkdown(markdown, "fixtures/ms1/task.md");
-    const resolved = await resolvePublicScanResult(scan, registry, { repoRoot: process.cwd() });
+    const resolved = await resolvePublicScanResult(scan, registry, {
+      repoRoot: process.cwd(),
+      lockfile: true,
+    });
 
     expect(resolved.diagnostics).toEqual([]);
     expect(resolved.artifacts).toHaveLength(1);
+    expect(resolved.lockfile?.records).toHaveLength(1);
     expect(resolved.artifacts[0]).toMatchObject({
       canonicalUrl: "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt",
       selectedLens: "excerpt",
       resolverId: "repo-path",
     });
+  });
+
+  it("keeps public lockfile output stable across relative and absolute scan source paths", async () => {
+    const registry = parseRegistry(
+      JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
+    );
+    const markdown = await readFile("fixtures/ms1/task.md", "utf8");
+    const relativeScan = scanMarkdown(markdown, "fixtures/ms1/task.md");
+    const absoluteScan = scanMarkdown(markdown, path.resolve("fixtures/ms1/task.md"));
+    const relative = await resolvePublicScanResult(relativeScan, registry, {
+      repoRoot: process.cwd(),
+      lockfile: true,
+    });
+    const absolute = await resolvePublicScanResult(absoluteScan, registry, {
+      repoRoot: process.cwd(),
+      lockfile: true,
+    });
+
+    expect(relative.diagnostics).toEqual([]);
+    expect(absolute).toEqual(relative);
+  });
+
+  it("keeps public lockfile output stable when resolving relative scan paths from a different cwd", async () => {
+    const repoRoot = process.cwd();
+    const registry = parseRegistry(
+      JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
+    );
+    const markdown = await readFile("fixtures/ms1/task.md", "utf8");
+    const scan = scanMarkdown(markdown, "fixtures/ms1/task.md");
+    const fromRepo = await resolvePublicScanResult(scan, registry, {
+      repoRoot,
+      lockfile: true,
+    });
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-ms1-cwd-"));
+
+    try {
+      const originalCwd = process.cwd();
+
+      try {
+        process.chdir(tempRoot);
+        const fromTemp = await resolvePublicScanResult(scan, registry, {
+          repoRoot,
+          lockfile: true,
+        });
+
+        expect(fromTemp).toEqual(fromRepo);
+      } finally {
+        process.chdir(originalCwd);
+      }
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps deserialized public lockfile scans stable with an explicit source path base", async () => {
+    const repoRoot = process.cwd();
+    const registry = parseRegistry(
+      JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
+    );
+    const markdown = await readFile("fixtures/ms1/task.md", "utf8");
+    const scan = JSON.parse(
+      JSON.stringify(scanMarkdown(markdown, "fixtures/ms1/task.md")),
+    ) as ReturnType<typeof scanMarkdown>;
+    const fromRepo = await resolvePublicScanResult(scan, registry, {
+      repoRoot,
+      lockfile: true,
+      sourcePathBase: repoRoot,
+    });
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-ms1-source-base-"));
+
+    try {
+      const originalCwd = process.cwd();
+
+      try {
+        process.chdir(tempRoot);
+        const fromTemp = await resolvePublicScanResult(scan, registry, {
+          repoRoot,
+          lockfile: true,
+          sourcePathBase: repoRoot,
+        });
+
+        expect(fromTemp).toEqual(fromRepo);
+      } finally {
+        process.chdir(originalCwd);
+      }
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("preserves public no-lockfile source paths from the scan result", async () => {
+    const registry = parseRegistry(
+      JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
+    );
+    const absolutePath = path.resolve("fixtures/ms1/task.md");
+    const markdown = await readFile("fixtures/ms1/task.md", "utf8");
+    const scan = scanMarkdown(markdown, absolutePath);
+    const resolved = await resolvePublicScanResult(scan, registry, { repoRoot: process.cwd() });
+
+    expect(resolved.diagnostics).toEqual([]);
+    expect(resolved.artifacts[0]?.citations[0]?.sourcePath).toBe(absolutePath);
   });
 
   it("validates valid links and rejects prompt-like params", async () => {

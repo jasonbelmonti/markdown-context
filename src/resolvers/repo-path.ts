@@ -4,15 +4,30 @@ import type {
   ResolveResult,
   ValidatedContextLink,
 } from "../core/types.js";
+import { stableSourcePathInsideBase } from "../core/source-path.js";
+import { createContextLockfile } from "../lockfile/lockfile.js";
+import type { ContextLockfileRecord } from "../lockfile/types.js";
+import type { Registry } from "../registry/registry.js";
 import { renderRepoPathLensArtifact } from "./repo-path/artifact.js";
+import { createRepoPathLockfileRecord } from "./repo-path/lockfile.js";
 import { readRepoPathSource } from "./repo-path/source.js";
+
+export interface ResolveRepoPathLinkOptions {
+  repoRoot: string;
+  lockfile?: {
+    registry: Registry;
+    preserveArtifactSourcePaths?: boolean;
+    sourcePathsAlreadyStable?: boolean;
+  };
+}
 
 export async function resolveRepoPathLink(
   links: readonly ValidatedContextLink[],
-  options: { repoRoot: string },
+  options: ResolveRepoPathLinkOptions,
 ): Promise<ResolveResult> {
   const artifacts: RepoPathLensArtifact[] = [];
   const diagnostics: ContextDiagnostic[] = [];
+  const lockfileRecords: ContextLockfileRecord[] = [];
 
   for (const link of links) {
     if (link.namespace !== "repo" || link.kind !== "path") {
@@ -43,12 +58,55 @@ export async function resolveRepoPathLink(
       continue;
     }
 
-    artifacts.push(renderRepoPathLensArtifact(link, source));
+    const lockfileArtifactLink =
+      options.lockfile !== undefined && options.lockfile.sourcePathsAlreadyStable !== true
+        ? withStableLockfileSourcePath(link, options.repoRoot)
+        : link;
+    const artifact =
+      options.lockfile?.preserveArtifactSourcePaths === true
+        ? renderRepoPathLensArtifact(link, source)
+        : renderRepoPathLensArtifact(lockfileArtifactLink, source);
+    artifacts.push(artifact);
+
+    if (options.lockfile !== undefined) {
+      const lockfileArtifact =
+        options.lockfile.preserveArtifactSourcePaths === true
+          ? renderRepoPathLensArtifact(lockfileArtifactLink, source)
+          : artifact;
+      lockfileRecords.push(
+        createRepoPathLockfileRecord(lockfileArtifact, options.lockfile.registry),
+      );
+    }
   }
 
   return {
     schemaVersion: "markdown-context.resolve-result.v0",
     artifacts,
     diagnostics,
+    ...(options.lockfile !== undefined ? { lockfile: createContextLockfile(lockfileRecords) } : {}),
+  };
+}
+
+function withStableLockfileSourcePath(
+  link: ValidatedContextLink,
+  repoRoot: string,
+): ValidatedContextLink {
+  if (link.sourcePath === undefined) {
+    return link;
+  }
+
+  const stableSourcePath = stableSourcePathInsideBase(link.sourcePath, repoRoot);
+  if (stableSourcePath === link.sourcePath) {
+    return link;
+  }
+
+  if (stableSourcePath === undefined) {
+    const { sourcePath: _sourcePath, ...linkWithoutSourcePath } = link;
+    return linkWithoutSourcePath;
+  }
+
+  return {
+    ...link,
+    sourcePath: stableSourcePath,
   };
 }
