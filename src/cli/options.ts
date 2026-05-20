@@ -6,12 +6,18 @@ export interface CliOptions {
 
 export type CliCommand = "scan" | "validate" | "resolve";
 
-const VALUE_FLAGS = new Set(["--registry", "--repo-root"]);
+const BOOLEAN_FLAGS = new Set(["--pretty", "--lockfile"]);
+const VALUE_FLAGS = new Set(["--registry", "--repo-root", "--lockfile-out"]);
 const COMMANDS = new Set<CliCommand>(["scan", "validate", "resolve"]);
+const COMMAND_BOOLEAN_OPTIONS: Record<CliCommand, readonly string[]> = {
+  scan: ["pretty"],
+  validate: ["pretty"],
+  resolve: ["pretty", "lockfile"],
+};
 const COMMAND_VALUE_OPTIONS: Record<CliCommand, readonly string[]> = {
   scan: [],
   validate: ["registry"],
-  resolve: ["registry", "repo-root"],
+  resolve: ["registry", "repo-root", "lockfile-out"],
 };
 const REQUIRED_VALUE_OPTIONS: Record<CliCommand, readonly string[]> = {
   scan: [],
@@ -42,8 +48,12 @@ export function parseOptions(args: readonly string[]): CliOptions {
       continue;
     }
 
-    if (arg === "--pretty") {
-      flags.add("pretty");
+    if (BOOLEAN_FLAGS.has(arg)) {
+      const optionName = arg.slice(2);
+      if (flags.has(optionName)) {
+        throw new Error(`Duplicate option: ${arg}.\n${usage()}`);
+      }
+      flags.add(optionName);
       continue;
     }
 
@@ -77,6 +87,14 @@ export function validateOptionsForCommand(command: CliCommand, options: CliOptio
   }
 
   const allowedValueOptions = new Set(COMMAND_VALUE_OPTIONS[command]);
+  const allowedBooleanOptions = new Set(COMMAND_BOOLEAN_OPTIONS[command]);
+
+  for (const optionName of options.flags.keys()) {
+    if (!allowedBooleanOptions.has(optionName)) {
+      throw new Error(`${command} does not support --${optionName}.\n${usage()}`);
+    }
+  }
+
   for (const optionName of options.values.keys()) {
     if (!allowedValueOptions.has(optionName)) {
       throw new Error(`${command} does not support --${optionName}.\n${usage()}`);
@@ -95,6 +113,6 @@ export function usage(): string {
     "Usage:",
     "  markdown-context scan <markdown-file> [--pretty]",
     "  markdown-context validate <markdown-file> --registry <registry.json> [--pretty]",
-    "  markdown-context resolve <markdown-file> --registry <registry.json> [--repo-root <path>] [--pretty]",
+    "  markdown-context resolve <markdown-file> --registry <registry.json> [--repo-root <path>] [--lockfile] [--lockfile-out <path>] [--pretty]",
   ].join("\n");
 }

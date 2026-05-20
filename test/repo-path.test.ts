@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SourceRange, ValidatedContextLink } from "../src/core/types.js";
 import { scanMarkdown } from "../src/core/scan.js";
+import { hashCanonicalJson, hashRegistry } from "../src/index.js";
 import { parseRegistry, validateContextLinks } from "../src/registry/registry.js";
 import { resolveRepoPathLink } from "../src/resolvers/repo-path.js";
 
@@ -41,6 +42,156 @@ describe("repo/path resolver boundary", () => {
     });
     expect(resolved.artifacts[0]?.citations[0]?.sourceRange.start.line).toBe(3);
     expect(resolved.artifacts[0]?.contentHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  it("creates lockfile records for resolved repo/path artifacts", async () => {
+    const registry = await fixtureRegistry();
+    const markdown = await readFile("fixtures/ms1/task.md", "utf8");
+    const validated = validateContextLinks(
+      scanMarkdown(markdown, "fixtures/ms1/task.md").links,
+      registry,
+    );
+    const first = await resolveRepoPathLink(validated.links, {
+      repoRoot: process.cwd(),
+      lockfile: { registry },
+    });
+    const second = await resolveRepoPathLink(validated.links, {
+      repoRoot: process.cwd(),
+      lockfile: { registry },
+    });
+    const artifact = first.artifacts[0];
+    const record = first.lockfile?.records[0];
+
+    expect(first.diagnostics).toEqual([]);
+    expect(first.lockfile).toEqual(second.lockfile);
+    expect(record).toMatchObject({
+      schemaVersion: "markdown-context.lockfile-record.v0",
+      canonicalUrl: "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt",
+      selectedLens: "excerpt",
+      registryId: "ms1-local",
+      registryVersion: "0.1.0",
+      resolverId: "repo-path",
+      resolverVersion: "0.1.0",
+      sourceIdentity: {
+        kind: "repo/path",
+        path: "fixtures/ms1/context-source.md",
+      },
+      outputOptions: {
+        artifactFormat: "json",
+        excerptMaxBytes: 4096,
+      },
+    });
+    expect(record?.artifactPath).toMatch(
+      /^\.markdown-context\/artifacts\/repo-path\/[a-f0-9]{64}\.json$/,
+    );
+    expect(record?.artifactHash).toBe(hashCanonicalJson(artifact));
+    expect(record?.registryHash).toBe(hashRegistry(registry));
+    expect(record?.sourceHash).toBe(artifact?.sourceIdentity.contentHash);
+  });
+
+  it("uses distinct artifact paths when citations change artifact bytes", async () => {
+    const registry = await fixtureRegistry();
+    const markdown = [
+      "[first](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt)",
+      "[second](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt)",
+    ].join("\n\n");
+    const validated = validateContextLinks(scanMarkdown(markdown, "fixture.md").links, registry);
+    const resolved = await resolveRepoPathLink(validated.links, {
+      repoRoot: process.cwd(),
+      lockfile: { registry },
+    });
+    const records = resolved.lockfile?.records ?? [];
+
+    expect(resolved.diagnostics).toEqual([]);
+    expect(records).toHaveLength(2);
+    expect(new Set(records.map((record) => record.artifactHash)).size).toBe(2);
+    expect(new Set(records.map((record) => record.artifactPath)).size).toBe(2);
+    for (const record of records) {
+      expect(record.artifactPath).toBe(
+        `.markdown-context/artifacts/repo-path/${record.artifactHash.slice("sha256:".length)}.json`,
+      );
+    }
+  });
+
+  it("keeps direct resolver lockfiles stable across relative and absolute citation source paths", async () => {
+    const registry = await fixtureRegistry();
+    const markdown = await readFile("fixtures/ms1/task.md", "utf8");
+    const relative = validateContextLinks(
+      scanMarkdown(markdown, "fixtures/ms1/task.md").links,
+      registry,
+    );
+    const absolute = validateContextLinks(
+      scanMarkdown(markdown, path.resolve("fixtures/ms1/task.md")).links,
+      registry,
+    );
+    const relativeResolved = await resolveRepoPathLink(relative.links, {
+      repoRoot: process.cwd(),
+      lockfile: { registry },
+    });
+    const absoluteResolved = await resolveRepoPathLink(absolute.links, {
+      repoRoot: process.cwd(),
+      lockfile: { registry },
+    });
+
+    expect(relativeResolved.diagnostics).toEqual([]);
+    expect(absoluteResolved.diagnostics).toEqual([]);
+    expect(absoluteResolved.lockfile).toEqual(relativeResolved.lockfile);
+  });
+
+  it("can preserve returned artifacts while stabilizing lockfile records", async () => {
+    const registry = await fixtureRegistry();
+    const markdown = await readFile("fixtures/ms1/task.md", "utf8");
+    const absolutePath = path.resolve("fixtures/ms1/task.md");
+    const relative = validateContextLinks(
+      scanMarkdown(markdown, "fixtures/ms1/task.md").links,
+      registry,
+    );
+    const absolute = validateContextLinks(
+      scanMarkdown(markdown, absolutePath).links,
+      registry,
+    );
+    const stableResolved = await resolveRepoPathLink(relative.links, {
+      repoRoot: process.cwd(),
+      lockfile: { registry },
+    });
+    const preservedResolved = await resolveRepoPathLink(absolute.links, {
+      repoRoot: process.cwd(),
+      lockfile: { registry, preserveArtifactSourcePaths: true },
+    });
+
+    expect(preservedResolved.diagnostics).toEqual([]);
+    expect(preservedResolved.artifacts[0]?.citations[0]?.sourcePath).toBe(absolutePath);
+    expect(preservedResolved.lockfile).toEqual(stableResolved.lockfile);
+    expect(preservedResolved.lockfile?.records[0]?.artifactHash).not.toBe(
+      hashCanonicalJson(preservedResolved.artifacts[0]),
+    );
+  });
+
+  it("does not re-normalize already-stable lockfile citation source paths", async () => {
+    const repoRoot = process.cwd();
+    const registry = await fixtureRegistry();
+    const markdown = await readFile("fixtures/ms1/task.md", "utf8");
+    const validated = validateContextLinks(
+      scanMarkdown(markdown, "fixtures/ms1/task.md").links,
+      registry,
+    );
+
+    await withTempRepo(async (otherRoot) => {
+      const originalCwd = process.cwd();
+
+      try {
+        process.chdir(otherRoot);
+        const resolved = await resolveRepoPathLink(validated.links, {
+          repoRoot,
+          lockfile: { registry, sourcePathsAlreadyStable: true },
+        });
+
+        expect(resolved.diagnostics).toEqual([]);
+        expect(resolved.artifacts[0]?.citations[0]?.sourcePath).toBe("fixtures/ms1/task.md");
+      } finally {
+        process.chdir(originalCwd);
+      }
+    });
   });
 
   it("rejects non-excerpt repo/path lenses before rendering", async () => {
@@ -183,6 +334,24 @@ describe("repo/path resolver boundary", () => {
           severity: "error",
         },
       ]);
+    });
+  });
+
+  it("resolves repo-contained paths whose first segment starts with two dots", async () => {
+    await withTempRepo(async (repoRoot) => {
+      const sourceDir = path.join(repoRoot, "..docs");
+
+      await mkdir(sourceDir);
+      await writeFile(path.join(sourceDir, "source.md"), "# Dot Docs\n", "utf8");
+
+      const artifact = await resolveSingleRepoPath(
+        "[dotdocs](ctx://repo/path/..docs/source.md?lens=excerpt)",
+        await fixtureRegistry(),
+        repoRoot,
+      );
+
+      expect(artifact.sourceIdentity.path).toBe("..docs/source.md");
+      expect(artifact.content.text).toBe("# Dot Docs\n");
     });
   });
 

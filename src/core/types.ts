@@ -1,3 +1,5 @@
+import type { ContextLockfile } from "../lockfile/types.js";
+
 export interface SourcePosition {
   line: number;
   column: number;
@@ -82,4 +84,5 @@ export interface ResolveResult {
   schemaVersion: "markdown-context.resolve-result.v0";
   artifacts: RepoPathLensArtifact[];
   diagnostics: ContextDiagnostic[];
+  lockfile?: ContextLockfile;
 }

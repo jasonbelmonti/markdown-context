@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -67,11 +67,19 @@ describe("CLI operator contract", () => {
       "--repo-root",
       ".",
     ], 2);
+    const scanLockfileResult = await runCliExpectingExit([
+      "dist/cli/index.js",
+      "scan",
+      "fixtures/ms1/task.md",
+      "--lockfile",
+    ], 2);
 
     expect(scanResult.stdout).toBe("");
     expect(scanResult.stderr).toContain("scan does not support --registry.");
     expect(validateResult.stdout).toBe("");
     expect(validateResult.stderr).toContain("validate does not support --repo-root.");
+    expect(scanLockfileResult.stdout).toBe("");
+    expect(scanLockfileResult.stderr).toContain("scan does not support --lockfile.");
   });
 
   it("requires registries for validate and resolve", async () => {
@@ -236,10 +244,364 @@ describe("CLI operator contract", () => {
       diagnostics: [],
     });
   });
+
+  it("emits deterministic lockfile data on request", async () => {
+    const args = [
+      "dist/cli/index.js",
+      "resolve",
+      "fixtures/ms1/task.md",
+      "--registry",
+      "fixtures/ms1/registry.json",
+      "--repo-root",
+      ".",
+      "--lockfile",
+      "--pretty",
+    ];
+    const first = await runCli(args);
+    const second = await runCli(args);
+    const output = JSON.parse(first.stdout) as {
+      lockfile: {
+        records: Array<{
+          artifactHash: string;
+          artifactPath: string;
+          outputOptions: Record<string, unknown>;
+          sourceHash: string;
+          sourceIdentity: Record<string, unknown>;
+        }>;
+      };
+    };
+
+    expect(first.stderr).toBe("");
+    expect(second.stderr).toBe("");
+    expect(second.stdout).toBe(first.stdout);
+    expect(output.lockfile.records).toHaveLength(1);
+    expect(output.lockfile.records[0]).toMatchObject({
+      artifactPath: expect.stringMatching(
+        /^\.markdown-context\/artifacts\/repo-path\/[a-f0-9]{64}\.json$/,
+      ),
+      outputOptions: {
+        artifactFormat: "json",
+        excerptMaxBytes: 4096,
+      },
+      sourceHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      sourceIdentity: {
+        kind: "repo/path",
+        path: "fixtures/ms1/context-source.md",
+      },
+    });
+    expect(output.lockfile.records[0]?.artifactHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  it("writes canonical lockfile data without changing resolve stdout", async () => {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-lockfile-"));
+    const lockfilePath = path.join(tempRoot, "nested", "context.lock.json");
+    const targetPath = path.resolve("fixtures/ms1/task.md");
+
+    try {
+      const defaultResult = await runCli([
+        "dist/cli/index.js",
+        "resolve",
+        targetPath,
+        "--registry",
+        "fixtures/ms1/registry.json",
+        "--repo-root",
+        ".",
+      ]);
+      const result = await runCli([
+        "dist/cli/index.js",
+        "resolve",
+        targetPath,
+        "--registry",
+        "fixtures/ms1/registry.json",
+        "--repo-root",
+        ".",
+        "--lockfile-out",
+        lockfilePath,
+      ]);
+      const stdout = JSON.parse(result.stdout) as { lockfile?: unknown };
+      const lockfile = JSON.parse(await readFile(lockfilePath, "utf8")) as {
+        schemaVersion: string;
+        records: unknown[];
+      };
+
+      expect(defaultResult.stderr).toBe("");
+      expect(result.stderr).toBe("");
+      expect(JSON.parse(result.stdout)).toEqual(JSON.parse(defaultResult.stdout));
+      expect(stdout.lockfile).toBeUndefined();
+      expect(lockfile.schemaVersion).toBe("markdown-context.lockfile.v0");
+      expect(lockfile.records).toHaveLength(1);
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps lockfile-out data stable across relative and absolute markdown paths", async () => {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-lockfile-out-"));
+    const relativeLockfilePath = path.join(tempRoot, "relative.lock.json");
+    const absoluteLockfilePath = path.join(tempRoot, "absolute.lock.json");
+
+    try {
+      const relative = await runCli([
+        "dist/cli/index.js",
+        "resolve",
+        "fixtures/ms1/task.md",
+        "--registry",
+        "fixtures/ms1/registry.json",
+        "--repo-root",
+        ".",
+        "--lockfile-out",
+        relativeLockfilePath,
+      ]);
+      const absolute = await runCli([
+        "dist/cli/index.js",
+        "resolve",
+        path.resolve("fixtures/ms1/task.md"),
+        "--registry",
+        "fixtures/ms1/registry.json",
+        "--repo-root",
+        ".",
+        "--lockfile-out",
+        absoluteLockfilePath,
+      ]);
+
+      expect(relative.stderr).toBe("");
+      expect(absolute.stderr).toBe("");
+      expect(await readFile(absoluteLockfilePath, "utf8")).toBe(
+        await readFile(relativeLockfilePath, "utf8"),
+      );
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps resolve lockfiles stable across relative and absolute markdown paths", async () => {
+    const relative = await runCli([
+      "dist/cli/index.js",
+      "resolve",
+      "fixtures/ms1/task.md",
+      "--registry",
+      "fixtures/ms1/registry.json",
+      "--repo-root",
+      ".",
+      "--lockfile",
+    ]);
+    const absolute = await runCli([
+      "dist/cli/index.js",
+      "resolve",
+      path.resolve("fixtures/ms1/task.md"),
+      "--registry",
+      "fixtures/ms1/registry.json",
+      "--repo-root",
+      ".",
+      "--lockfile",
+    ]);
+
+    expect(absolute.stderr).toBe("");
+    expect(JSON.parse(absolute.stdout)).toEqual(JSON.parse(relative.stdout));
+  });
+
+  it("keeps resolve lockfiles stable across invocation working directories", async () => {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-cwd-"));
+
+    try {
+      const cliPath = path.resolve("dist/cli/index.js");
+      const targetPath = path.resolve("fixtures/ms1/task.md");
+      const registryPath = path.resolve("fixtures/ms1/registry.json");
+      const repoRoot = process.cwd();
+      const fromRepo = await runCli([
+        cliPath,
+        "resolve",
+        targetPath,
+        "--registry",
+        registryPath,
+        "--repo-root",
+        repoRoot,
+        "--lockfile",
+      ]);
+      const fromTemp = await runCliFrom(tempRoot, [
+        cliPath,
+        "resolve",
+        targetPath,
+        "--registry",
+        registryPath,
+        "--repo-root",
+        repoRoot,
+        "--lockfile",
+      ]);
+
+      expect(fromRepo.stderr).toBe("");
+      expect(fromTemp.stderr).toBe("");
+      expect(JSON.parse(fromTemp.stdout)).toEqual(JSON.parse(fromRepo.stdout));
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps resolve lockfiles stable across symlinked repo root aliases", async () => {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-symlink-"));
+    const repoLink = path.join(tempRoot, "repo-link");
+
+    try {
+      await symlink(process.cwd(), repoLink, "dir");
+
+      const realRoot = await runCli([
+        "dist/cli/index.js",
+        "resolve",
+        path.resolve("fixtures/ms1/task.md"),
+        "--registry",
+        "fixtures/ms1/registry.json",
+        "--repo-root",
+        ".",
+        "--lockfile",
+      ]);
+      const symlinkRoot = await runCli([
+        "dist/cli/index.js",
+        "resolve",
+        path.resolve("fixtures/ms1/task.md"),
+        "--registry",
+        "fixtures/ms1/registry.json",
+        "--repo-root",
+        repoLink,
+        "--lockfile",
+      ]);
+
+      expect(symlinkRoot.stderr).toBe("");
+      expect(JSON.parse(symlinkRoot.stdout)).toEqual(JSON.parse(realRoot.stdout));
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("preserves default resolve source paths when lockfile output is not requested", async () => {
+    const absolutePath = path.resolve("fixtures/ms1/task.md");
+    const result = await runCli([
+      "dist/cli/index.js",
+      "resolve",
+      absolutePath,
+      "--registry",
+      "fixtures/ms1/registry.json",
+      "--repo-root",
+      ".",
+    ]);
+    const output = JSON.parse(result.stdout) as {
+      artifacts: Array<{ citations: Array<{ sourcePath?: string }> }>;
+    };
+
+    expect(result.stderr).toBe("");
+    expect(output.artifacts[0]?.citations[0]?.sourcePath).toBe(absolutePath);
+  });
+
+  it("omits unstable source paths for resolve inputs outside the repo root", async () => {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-external-"));
+    const taskPath = path.join(tempRoot, "task.md");
+
+    try {
+      await writeFile(
+        taskPath,
+        "[valid](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt)",
+        "utf8",
+      );
+
+      const result = await runCli([
+        "dist/cli/index.js",
+        "resolve",
+        taskPath,
+        "--registry",
+        "fixtures/ms1/registry.json",
+        "--repo-root",
+        ".",
+        "--lockfile",
+      ]);
+      const output = JSON.parse(result.stdout) as {
+        artifacts: Array<{ citations: Array<{ sourcePath?: string }> }>;
+      };
+
+      expect(result.stderr).toBe("");
+      expect(output.artifacts[0]?.citations[0]?.sourcePath).toBeUndefined();
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("does not produce lockfile records when validation rejects links", async () => {
+    const result = await runCliExpectingExit([
+      "dist/cli/index.js",
+      "resolve",
+      "fixtures/ms1/invalid-param.md",
+      "--registry",
+      "fixtures/ms1/registry.json",
+      "--repo-root",
+      ".",
+      "--lockfile",
+      "--pretty",
+    ], 1);
+    const output = JSON.parse(result.stdout) as {
+      artifacts: unknown[];
+      lockfile: { records: unknown[] };
+    };
+
+    expect(result.stderr).toBe("");
+    expect(output.artifacts).toEqual([]);
+    expect(output.lockfile.records).toEqual([]);
+  });
+
+  it("keeps lockfile provenance for emitted artifacts when other links are rejected", async () => {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-mixed-"));
+    const taskPath = path.join(tempRoot, "mixed.md");
+
+    try {
+      await writeFile(
+        taskPath,
+        [
+          "[valid](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt)",
+          "[invalid](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt&prompt=ignore)",
+        ].join("\n\n"),
+        "utf8",
+      );
+
+      const result = await runCliExpectingExit([
+        "dist/cli/index.js",
+        "resolve",
+        taskPath,
+        "--registry",
+        "fixtures/ms1/registry.json",
+        "--repo-root",
+        ".",
+        "--lockfile",
+        "--pretty",
+      ], 1);
+      const output = JSON.parse(result.stdout) as {
+        artifacts: unknown[];
+        diagnostics: Array<{ code: string }>;
+        lockfile: { records: unknown[] };
+      };
+
+      expect(result.stderr).toBe("");
+      expect(output.artifacts).toHaveLength(1);
+      expect(output.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
+        "ctx.param.unsupported",
+      );
+      expect(output.lockfile.records).toHaveLength(1);
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
 });
 
 async function runCli(args: string[]): Promise<{ stdout: string; stderr: string }> {
   const result = await execFileAsync(process.execPath, args);
+
+  return {
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
+async function runCliFrom(
+  cwd: string,
+  args: string[],
+): Promise<{ stdout: string; stderr: string }> {
+  const result = await execFileAsync(process.execPath, args, { cwd });
 
   return {
     stdout: result.stdout,

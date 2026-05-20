@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import {
   documentQueries,
   normalize,
@@ -12,6 +14,8 @@ import type {
   ScanResult,
   SourceRange,
 } from "./types.js";
+
+const sourcePathBases = new WeakMap<ScanResult, string>();
 
 export function scanMarkdown(markdown: string, filePath?: string): ScanResult {
   const parseResult = parse(markdown, filePath === undefined ? {} : { path: filePath });
@@ -60,12 +64,22 @@ export function scanMarkdown(markdown: string, filePath?: string): ScanResult {
     });
   }
 
-  return {
+  const result: ScanResult = {
     schemaVersion: "markdown-context.scan-result.v0",
     ...(filePath !== undefined ? { filePath } : {}),
     links,
     diagnostics,
   };
+
+  if (filePath !== undefined && !path.isAbsolute(filePath)) {
+    sourcePathBases.set(result, process.cwd());
+  }
+
+  return result;
+}
+
+export function sourcePathBaseForScanResult(scanResult: ScanResult): string | undefined {
+  return sourcePathBases.get(scanResult);
 }
 
 function isContextUrl(url: string | undefined): url is string {

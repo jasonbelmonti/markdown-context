@@ -7,6 +7,7 @@ import type {
   RepoPathSourceIdentity,
   ValidatedContextLink,
 } from "../../core/types.js";
+import { isOutsideBasePath } from "../../core/source-path.js";
 
 type RepoPathResolution =
   | { path: string }
@@ -97,7 +98,7 @@ async function resolveRealPathInsideRoot(
 
   const relative = path.relative(root, candidate);
 
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+  if (isOutsideBasePath(relative)) {
     return {
       diagnosticCode: "ctx.repoPath.outsideRoot",
       message: "Repo path resolves outside the repository root.",

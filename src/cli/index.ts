@@ -1,10 +1,19 @@
 #!/usr/bin/env node
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { stableJson } from "./json.js";
-import { parseCommand, parseOptions, validateOptionsForCommand } from "./options.js";
+import {
+  parseCommand,
+  parseOptions,
+  validateOptionsForCommand,
+  type CliCommand,
+  type CliOptions,
+} from "./options.js";
 import { scanMarkdown } from "../core/scan.js";
+import { stableSourcePathInsideBase } from "../core/source-path.js";
+import type { ContextLockfile } from "../lockfile/types.js";
+import { createContextLockfile, serializeContextLockfile } from "../lockfile/lockfile.js";
 import { loadRegistry, validateScanResult } from "../registry/registry.js";
 import { resolveRepoPathLink } from "../resolvers/repo-path.js";
 
@@ -34,7 +43,7 @@ async function run(
   }
 
   const markdown = await readFile(targetPath, "utf8");
-  const scanResult = scanMarkdown(markdown, targetPath);
+  const scanResult = scanMarkdown(markdown, sourcePathForCommand(cliCommand, options, targetPath));
 
   if (cliCommand === "scan") {
     return { body: scanResult, exitCode: hasError(scanResult.diagnostics) ? 1 : 0, pretty };
@@ -58,16 +67,38 @@ async function run(
 
   if (cliCommand === "resolve") {
     const repoRoot = options.values.get("repo-root") ?? process.cwd();
+    const emitLockfile = options.flags.has("lockfile");
+    const lockfileOut = options.values.get("lockfile-out");
+    const lockfileRequested = emitLockfile || lockfileOut !== undefined;
     const resolveResult = await resolveRepoPathLink(validateResult.links, {
       repoRoot: path.resolve(repoRoot),
+      ...(lockfileRequested
+        ? {
+            lockfile: {
+              registry,
+              preserveArtifactSourcePaths: !emitLockfile,
+              sourcePathsAlreadyStable: emitLockfile,
+            },
+          }
+        : {}),
     });
     const diagnostics = [
       ...validateResult.diagnostics,
       ...resolveResult.diagnostics,
     ];
+    const lockfile = resolveResult.lockfile ?? createContextLockfile([]);
+
+    if (lockfileOut !== undefined) {
+      await writeLockfile(lockfileOut, lockfile);
+    }
 
     return {
-      body: { ...resolveResult, diagnostics },
+      body: {
+        schemaVersion: resolveResult.schemaVersion,
+        artifacts: resolveResult.artifacts,
+        diagnostics,
+        ...(emitLockfile ? { lockfile } : {}),
+      },
       exitCode: hasError(diagnostics) ? 1 : 0,
       pretty,
     };
@@ -78,4 +109,24 @@ async function run(
 
 function hasError(diagnostics: readonly { severity: string }[]): boolean {
   return diagnostics.some((diagnostic) => diagnostic.severity === "error");
+}
+
+async function writeLockfile(lockfilePath: string, lockfile: ContextLockfile): Promise<void> {
+  const resolvedPath = path.resolve(lockfilePath);
+
+  await mkdir(path.dirname(resolvedPath), { recursive: true });
+  await writeFile(resolvedPath, serializeContextLockfile(lockfile), "utf8");
+}
+
+function sourcePathForCommand(
+  command: CliCommand,
+  options: CliOptions,
+  targetPath: string,
+): string | undefined {
+  if (command !== "resolve" || !options.flags.has("lockfile")) {
+    return targetPath;
+  }
+
+  const repoRoot = options.values.get("repo-root") ?? process.cwd();
+  return stableSourcePathInsideBase(path.resolve(targetPath), repoRoot);
 }

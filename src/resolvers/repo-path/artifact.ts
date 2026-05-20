@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type { RepoPathLensArtifact, ValidatedContextLink } from "../../core/types.js";
 import type { RepoPathSource } from "./source.js";
 
-const EXCERPT_MAX_BYTES = 4096;
+export const REPO_PATH_EXCERPT_MAX_BYTES = 4096;
 const EXCERPT_TRUNCATION_MARKER = "\n\n[markdown-context: excerpt truncated]\n";
 
 export function renderRepoPathLensArtifact(
@@ -38,12 +38,12 @@ export function renderRepoPathLensArtifact(
 function renderBoundedExcerpt(text: string): string {
   const canonicalText = ensureFinalNewline(text);
 
-  if (Buffer.byteLength(canonicalText, "utf8") <= EXCERPT_MAX_BYTES) {
+  if (Buffer.byteLength(canonicalText, "utf8") <= REPO_PATH_EXCERPT_MAX_BYTES) {
     return canonicalText;
   }
 
   const markerBudget = Buffer.byteLength(EXCERPT_TRUNCATION_MARKER, "utf8");
-  const textBudget = EXCERPT_MAX_BYTES - markerBudget;
+  const textBudget = REPO_PATH_EXCERPT_MAX_BYTES - markerBudget;
   let output = "";
   let outputBytes = 0;
 
