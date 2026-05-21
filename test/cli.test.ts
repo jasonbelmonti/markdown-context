@@ -6,6 +6,10 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 import { stableJson } from "../src/cli/json.js";
+import { hashCanonicalJson, hashUtf8Bytes, serializeCanonicalJson } from "../src/index.js";
+import type { ContextLockfile, RepoPathLensArtifact } from "../src/index.js";
+
+const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 
 const execFileAsync = promisify(execFile);
 
@@ -290,6 +294,77 @@ describe("CLI operator contract", () => {
       },
     });
     expect(output.lockfile.records[0]?.artifactHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  it("proves repeated resolve artifact bytes, lockfile bytes, and hashes stay stable", async () => {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-determinism-"));
+    const firstLockfilePath = path.join(tempRoot, "first.lock.json");
+    const secondLockfilePath = path.join(tempRoot, "second.lock.json");
+
+    try {
+      const first = await runCli(resolveWithLockfileArgs(firstLockfilePath));
+      const second = await runCli(resolveWithLockfileArgs(secondLockfilePath));
+      const firstLockfileBytes = await readFile(firstLockfilePath, "utf8");
+      const secondLockfileBytes = await readFile(secondLockfilePath, "utf8");
+      const firstOutput = JSON.parse(first.stdout) as ResolveWithLockfileOutput;
+      const secondOutput = JSON.parse(second.stdout) as ResolveWithLockfileOutput;
+      const firstArtifact = firstOutput.artifacts[0];
+      const secondArtifact = secondOutput.artifacts[0];
+      const firstRecord = firstOutput.lockfile.records[0];
+      const secondRecord = secondOutput.lockfile.records[0];
+
+      expect(first.stderr).toBe("");
+      expect(second.stderr).toBe("");
+      expect(firstOutput.diagnostics).toEqual([]);
+      expect(secondOutput.diagnostics).toEqual([]);
+      expect(first.stdout).toBe(second.stdout);
+      expect(firstLockfileBytes).toBe(secondLockfileBytes);
+      expect(firstArtifact).toBeDefined();
+      expect(secondArtifact).toBeDefined();
+      expect(firstRecord).toBeDefined();
+      expect(secondRecord).toBeDefined();
+
+      if (
+        firstArtifact === undefined ||
+        secondArtifact === undefined ||
+        firstRecord === undefined ||
+        secondRecord === undefined
+      ) {
+        throw new Error("Expected repeated resolve runs to emit one artifact and one lockfile record.");
+      }
+
+      const firstArtifactBytes = serializeCanonicalJson(firstArtifact);
+      const secondArtifactBytes = serializeCanonicalJson(secondArtifact);
+      const firstLockfileHash = hashUtf8Bytes(firstLockfileBytes);
+      const secondLockfileHash = hashUtf8Bytes(secondLockfileBytes);
+
+      expect(secondArtifactBytes).toBe(firstArtifactBytes);
+      expect(secondOutput.lockfile).toEqual(firstOutput.lockfile);
+      expect(JSON.parse(secondLockfileBytes)).toEqual(JSON.parse(firstLockfileBytes));
+      expect(secondLockfileHash).toBe(firstLockfileHash);
+      expect(firstRecord.artifactHash).toBe(hashCanonicalJson(firstArtifact));
+      expect(secondRecord.artifactHash).toBe(firstRecord.artifactHash);
+      expect(secondRecord.registryHash).toBe(firstRecord.registryHash);
+      expect(secondRecord.sourceHash).toBe(firstRecord.sourceHash);
+      expect(hashUtf8Bytes(firstArtifactBytes)).toMatch(SHA256_PATTERN);
+      expect(firstLockfileHash).toMatch(SHA256_PATTERN);
+      expect(firstRecord).toMatchObject({
+        artifactHash: expect.stringMatching(SHA256_PATTERN),
+        artifactPath: `.markdown-context/artifacts/repo-path/${firstRecord.artifactHash.slice("sha256:".length)}.json`,
+        outputOptions: {
+          artifactFormat: "json",
+          excerptMaxBytes: 4096,
+        },
+        registryHash: expect.stringMatching(SHA256_PATTERN),
+        sourceHash: expect.stringMatching(SHA256_PATTERN),
+        sourceIdentity: {
+          kind: "repo/path",
+          path: "fixtures/ms1/context-source.md",
+        },
+      });
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
   });
 
   it("writes canonical lockfile data without changing resolve stdout", async () => {
@@ -587,6 +662,28 @@ describe("CLI operator contract", () => {
     }
   });
 });
+
+interface ResolveWithLockfileOutput {
+  artifacts: RepoPathLensArtifact[];
+  diagnostics: unknown[];
+  lockfile: ContextLockfile;
+}
+
+function resolveWithLockfileArgs(lockfilePath: string): string[] {
+  return [
+    "dist/cli/index.js",
+    "resolve",
+    "fixtures/ms1/task.md",
+    "--registry",
+    "fixtures/ms1/registry.json",
+    "--repo-root",
+    ".",
+    "--lockfile",
+    "--lockfile-out",
+    lockfilePath,
+    "--pretty",
+  ];
+}
 
 async function runCli(args: string[]): Promise<{ stdout: string; stderr: string }> {
   const result = await execFileAsync(process.execPath, args);
