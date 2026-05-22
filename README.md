@@ -3,6 +3,8 @@
 `markdown-context` is a CLI-first scanner, validator, and offline resolver for
 `ctx://` context links in Markdown.
 
+Project site: https://jasonbelmonti.github.io/markdown-context/
+
 The current MVP is read-side only. It lets a coding agent or human run local
 commands to:
 
@@ -111,6 +113,7 @@ keeps the safe scan -> validate -> resolve flow together for package consumers.
 
 ## Documentation
 
+- [Project site](https://jasonbelmonti.github.io/markdown-context/)
 - [User guide](docs/user-guide.md)
 - [Operational design spec](docs/design/markdown-context-operational-design-spec.md)
 - [Read-side MVP execution spec](docs/execution/markdown-context-read-side-mvp-execution-spec.md)
