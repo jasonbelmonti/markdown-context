@@ -20,12 +20,18 @@ describe("CLI operator contract", () => {
       "inspect",
       "missing.md",
     ], 2);
+    const output = parseCliError(result);
 
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("Unknown command: inspect.");
-    expect(result.stderr).toContain("Usage:");
-    expect(result.stderr).not.toContain("ENOENT");
-    expect(result.stderr).not.toContain("requires --registry");
+    expect(output.diagnostics).toMatchObject([
+      {
+        code: "cli.command.unknown",
+        message: "Unknown command: inspect.",
+        severity: "error",
+      },
+    ]);
+    expect(output.usage?.join("\n")).toContain("Usage:");
+    expect(result.stdout).not.toContain("ENOENT");
+    expect(result.stdout).not.toContain("requires --registry");
   });
 
   it("rejects unknown options instead of treating them as files", async () => {
@@ -36,10 +42,16 @@ describe("CLI operator contract", () => {
       "--format",
       "json",
     ], 2);
+    const output = parseCliError(result);
 
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("Unknown option: --format.");
-    expect(result.stderr).toContain("Usage:");
+    expect(output.diagnostics).toMatchObject([
+      {
+        code: "cli.option.unknown",
+        message: "Unknown option: --format.",
+        severity: "error",
+      },
+    ]);
+    expect(output.usage?.join("\n")).toContain("Usage:");
   });
 
   it("rejects extra positional arguments", async () => {
@@ -49,9 +61,15 @@ describe("CLI operator contract", () => {
       "fixtures/ms1/task.md",
       "fixtures/ms1/context-source.md",
     ], 2);
+    const output = parseCliError(result);
 
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("Expected exactly one <markdown-file> argument.");
+    expect(output.diagnostics).toMatchObject([
+      {
+        code: "cli.argument.count",
+        message: "Expected exactly one <markdown-file> argument.",
+        severity: "error",
+      },
+    ]);
   });
 
   it("rejects command-specific options that would otherwise be ignored", async () => {
@@ -77,13 +95,19 @@ describe("CLI operator contract", () => {
       "fixtures/ms1/task.md",
       "--lockfile",
     ], 2);
+    const scanOutput = parseCliError(scanResult);
+    const validateOutput = parseCliError(validateResult);
+    const scanLockfileOutput = parseCliError(scanLockfileResult);
 
-    expect(scanResult.stdout).toBe("");
-    expect(scanResult.stderr).toContain("scan does not support --registry.");
-    expect(validateResult.stdout).toBe("");
-    expect(validateResult.stderr).toContain("validate does not support --repo-root.");
-    expect(scanLockfileResult.stdout).toBe("");
-    expect(scanLockfileResult.stderr).toContain("scan does not support --lockfile.");
+    expect(scanOutput.diagnostics).toMatchObject([
+      { code: "cli.option.unsupported", message: "scan does not support --registry." },
+    ]);
+    expect(validateOutput.diagnostics).toMatchObject([
+      { code: "cli.option.unsupported", message: "validate does not support --repo-root." },
+    ]);
+    expect(scanLockfileOutput.diagnostics).toMatchObject([
+      { code: "cli.option.unsupported", message: "scan does not support --lockfile." },
+    ]);
   });
 
   it("requires registries for validate and resolve", async () => {
@@ -97,11 +121,23 @@ describe("CLI operator contract", () => {
       "resolve",
       "fixtures/ms1/task.md",
     ], 2);
+    const validateOutput = parseCliError(validateResult);
+    const resolveOutput = parseCliError(resolveResult);
 
-    expect(validateResult.stdout).toBe("");
-    expect(validateResult.stderr).toContain("validate requires --registry <path>.");
-    expect(resolveResult.stdout).toBe("");
-    expect(resolveResult.stderr).toContain("resolve requires --registry <path>.");
+    expect(validateOutput.diagnostics).toMatchObject([
+      {
+        code: "cli.option.required",
+        message: "validate requires --registry <path>.",
+        severity: "error",
+      },
+    ]);
+    expect(resolveOutput.diagnostics).toMatchObject([
+      {
+        code: "cli.option.required",
+        message: "resolve requires --registry <path>.",
+        severity: "error",
+      },
+    ]);
   });
 
   it("rejects duplicate value options", async () => {
@@ -114,9 +150,31 @@ describe("CLI operator contract", () => {
       "--registry",
       "fixtures/ms1/registry.json",
     ], 2);
+    const output = parseCliError(result);
 
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("Duplicate option: --registry.");
+    expect(output.diagnostics).toMatchObject([
+      {
+        code: "cli.option.duplicate",
+        message: "Duplicate option: --registry.",
+        severity: "error",
+      },
+    ]);
+  });
+
+  it("emits machine-readable diagnostics for file IO failures", async () => {
+    const result = await runCliExpectingExit([
+      "dist/cli/index.js",
+      "scan",
+      "missing.md",
+    ], 2);
+    const output = parseCliError(result);
+
+    expect(output.diagnostics).toHaveLength(1);
+    expect(output.diagnostics[0]).toMatchObject({
+      code: "cli.execution.failed",
+      severity: "error",
+    });
+    expect(output.diagnostics[0]?.message).toContain("ENOENT");
   });
 
   it("defaults resolve repo root to the current working directory", async () => {
@@ -621,6 +679,44 @@ describe("CLI operator contract", () => {
     expect(output.lockfile.records).toEqual([]);
   });
 
+  it("keeps validation diagnostics visible when lockfile-out cannot be written", async () => {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-lockfile-fail-"));
+    const blockingPath = path.join(tempRoot, "not-a-directory");
+    const lockfilePath = path.join(blockingPath, "context.lock.json");
+
+    try {
+      await writeFile(blockingPath, "blocking file", "utf8");
+
+      const result = await runCliExpectingExit([
+        "dist/cli/index.js",
+        "resolve",
+        "fixtures/ms1/invalid-param.md",
+        "--registry",
+        "fixtures/ms1/registry.json",
+        "--repo-root",
+        ".",
+        "--lockfile-out",
+        lockfilePath,
+        "--pretty",
+      ], 1);
+      const output = JSON.parse(result.stdout) as {
+        artifacts: unknown[];
+        diagnostics: Array<{ code: string; severity: string }>;
+      };
+
+      expect(result.stderr).toBe("");
+      expect(output.artifacts).toEqual([]);
+      expect(output.diagnostics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "ctx.param.unsupported", severity: "error" }),
+          expect.objectContaining({ code: "cli.lockfile.writeFailed", severity: "error" }),
+        ]),
+      );
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+
   it("does not emit artifacts or lockfile records when other links are rejected", async () => {
     const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-mixed-"));
     const taskPath = path.join(tempRoot, "mixed.md");
@@ -668,6 +764,16 @@ interface ResolveWithLockfileOutput {
   artifacts: RepoPathLensArtifact[];
   diagnostics: unknown[];
   lockfile: ContextLockfile;
+}
+
+interface CliErrorOutput {
+  schemaVersion: "markdown-context.cli-error.v0";
+  diagnostics: Array<{
+    code: string;
+    message: string;
+    severity: string;
+  }>;
+  usage?: string[];
 }
 
 function resolveWithLockfileArgs(lockfilePath: string): string[] {
@@ -724,4 +830,15 @@ async function runCliExpectingExit(
   }
 
   throw new Error(`Expected CLI command to exit with code ${expectedCode}.`);
+}
+
+function parseCliError(result: { stdout: string; stderr: string }): CliErrorOutput {
+  expect(result.stderr).toBe("");
+
+  const output = JSON.parse(result.stdout) as CliErrorOutput;
+
+  expect(output.schemaVersion).toBe("markdown-context.cli-error.v0");
+  expect(output.diagnostics.every((diagnostic) => diagnostic.severity === "error")).toBe(true);
+
+  return output;
 }
