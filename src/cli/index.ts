@@ -70,6 +70,26 @@ async function run(
     const emitLockfile = options.flags.has("lockfile");
     const lockfileOut = options.values.get("lockfile-out");
     const lockfileRequested = emitLockfile || lockfileOut !== undefined;
+
+    if (!validateResult.valid) {
+      const lockfile = createContextLockfile([]);
+
+      if (lockfileOut !== undefined) {
+        await writeLockfile(lockfileOut, lockfile);
+      }
+
+      return {
+        body: {
+          schemaVersion: "markdown-context.resolve-result.v0",
+          artifacts: [],
+          diagnostics: validateResult.diagnostics,
+          ...(emitLockfile ? { lockfile } : {}),
+        },
+        exitCode: 1,
+        pretty,
+      };
+    }
+
     const resolveResult = await resolveRepoPathLink(validateResult.links, {
       repoRoot: path.resolve(repoRoot),
       ...(lockfileRequested
