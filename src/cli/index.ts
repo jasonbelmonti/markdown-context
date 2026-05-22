@@ -2,6 +2,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { cliErrorResult } from "./errors.js";
 import { stableJson } from "./json.js";
 import {
   parseCommand,
@@ -12,6 +13,7 @@ import {
 } from "./options.js";
 import { scanMarkdown } from "../core/scan.js";
 import { stableSourcePathInsideBase } from "../core/source-path.js";
+import type { ContextDiagnostic } from "../core/types.js";
 import type { ContextLockfile } from "../lockfile/types.js";
 import { createContextLockfile, serializeContextLockfile } from "../lockfile/lockfile.js";
 import { loadRegistry, validateScanResult } from "../registry/registry.js";
@@ -24,7 +26,7 @@ try {
   process.stdout.write(stableJson(result.body, result.pretty));
   process.exitCode = result.exitCode;
 } catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.stdout.write(stableJson(cliErrorResult(error), args.includes("--pretty")));
   process.exitCode = 2;
 }
 
@@ -73,16 +75,15 @@ async function run(
 
     if (!validateResult.valid) {
       const lockfile = createContextLockfile([]);
-
-      if (lockfileOut !== undefined) {
-        await writeLockfile(lockfileOut, lockfile);
-      }
+      const lockfileDiagnostics =
+        lockfileOut === undefined ? [] : await writeLockfileDiagnostics(lockfileOut, lockfile);
+      const diagnostics = [...validateResult.diagnostics, ...lockfileDiagnostics];
 
       return {
         body: {
           schemaVersion: "markdown-context.resolve-result.v0",
           artifacts: [],
-          diagnostics: validateResult.diagnostics,
+          diagnostics,
           ...(emitLockfile ? { lockfile } : {}),
         },
         exitCode: 1,
@@ -107,19 +108,18 @@ async function run(
       ...resolveResult.diagnostics,
     ];
     const lockfile = resolveResult.lockfile ?? createContextLockfile([]);
-
-    if (lockfileOut !== undefined) {
-      await writeLockfile(lockfileOut, lockfile);
-    }
+    const lockfileDiagnostics =
+      lockfileOut === undefined ? [] : await writeLockfileDiagnostics(lockfileOut, lockfile);
+    const outputDiagnostics = [...diagnostics, ...lockfileDiagnostics];
 
     return {
       body: {
         schemaVersion: resolveResult.schemaVersion,
         artifacts: resolveResult.artifacts,
-        diagnostics,
+        diagnostics: outputDiagnostics,
         ...(emitLockfile ? { lockfile } : {}),
       },
-      exitCode: hasError(diagnostics) ? 1 : 0,
+      exitCode: hasError(outputDiagnostics) ? 1 : 0,
       pretty,
     };
   }
@@ -136,6 +136,32 @@ async function writeLockfile(lockfilePath: string, lockfile: ContextLockfile): P
 
   await mkdir(path.dirname(resolvedPath), { recursive: true });
   await writeFile(resolvedPath, serializeContextLockfile(lockfile), "utf8");
+}
+
+async function writeLockfileDiagnostics(
+  lockfilePath: string,
+  lockfile: ContextLockfile,
+): Promise<ContextDiagnostic[]> {
+  try {
+    await writeLockfile(lockfilePath, lockfile);
+    return [];
+  } catch (error) {
+    return [
+      {
+        code: "cli.lockfile.writeFailed",
+        message: `Failed to write lockfile: ${errorMessage(error)}`,
+        severity: "error",
+      },
+    ];
+  }
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
 }
 
 function sourcePathForCommand(
