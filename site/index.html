@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="markdown-context turns Markdown context links into typed, validated, deterministic context packets for coding agents and reviewers."
+    />
+    <meta name="theme-color" content="#17362b" />
+    <title>markdown-context | Deterministic context links for coding agents</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2317362b'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-family='Arial,sans-serif' font-size='20' font-weight='700' fill='%23f7fbf8'%3Emc%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="#top" aria-label="markdown-context home">
+          <span class="brand-mark" aria-hidden="true">mc</span>
+          <span>markdown-context</span>
+        </a>
+        <div class="nav-links">
+          <a href="#value">Value</a>
+          <a href="#quickstart">Quickstart</a>
+          <a href="#resolution">Resolution</a>
+          <a href="#workflows">Workflows</a>
+          <a href="#evidence">Evidence</a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <div class="hero-visual" aria-hidden="true">
+          <div class="visual-grid"></div>
+          <div class="terminal terminal-scan">
+            <div class="terminal-bar">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <pre><code>$ markdown-context scan task.md --pretty
+{
+  "links": [{
+    "scheme": "ctx",
+    "namespace": "repo",
+    "kind": "path",
+    "requestedLens": "excerpt"
+  }]
+}</code></pre>
+          </div>
+          <div class="terminal terminal-resolve">
+            <div class="terminal-bar">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <pre><code>$ markdown-context resolve task.md \
+  --registry context.registry.json \
+  --lockfile --pretty
+
+artifact: bounded excerpt
+lockfile: registry + source + hash</code></pre>
+          </div>
+          <div class="artifact-strip">
+            <span>Markdown task</span>
+            <span>ctx:// link</span>
+            <span>validated lens</span>
+            <span>auditable artifact</span>
+          </div>
+        </div>
+
+        <div class="hero-copy">
+          <p class="eyebrow">CLI-first context links for Markdown</p>
+          <h1 id="hero-title">markdown-context</h1>
+          <p class="hero-lede">
+            Turn Markdown references into typed, validated, deterministic context
+            packets that coding agents can consume and reviewers can audit.
+          </p>
+          <div class="hero-actions" aria-label="Primary actions">
+            <a class="button button-primary" href="#quickstart">Get started</a>
+            <a class="button button-secondary" href="#workflows">See workflows</a>
+          </div>
+          <dl class="signal-row" aria-label="Product signals">
+            <div>
+              <dt>No daemon</dt>
+              <dd>Shell commands and files</dd>
+            </div>
+            <div>
+              <dt>Fail closed</dt>
+              <dd>Registry-backed validation</dd>
+            </div>
+            <div>
+              <dt>Deterministic</dt>
+              <dd>Artifacts and lockfiles</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="band band-tight intro-band" aria-label="Release summary">
+        <div class="section-shell">
+          <p class="section-kicker">Why this exists</p>
+          <p class="intro-statement">
+            Agents already read Markdown tasks, design specs, handoffs, and PR
+            notes. The missing piece is a portable way to say which context is
+            authoritative, how much of it to retrieve, and what proof exists
+            that the agent used the same bounded source a reviewer sees.
+          </p>
+        </div>
+      </section>
+
+      <section class="band" id="value" aria-labelledby="value-title">
+        <div class="section-shell">
+          <div class="section-heading">
+            <p class="section-kicker">Value proposition</p>
+            <h2 id="value-title">Context references become operational inputs.</h2>
+          </div>
+          <div class="value-grid">
+            <article class="value-card">
+              <span class="card-index">01</span>
+              <h3>Replace prose scavenger hunts</h3>
+              <p>
+                A task can link to a design section, fixture, or handoff with a
+                `ctx://` URL instead of asking the agent to infer which files
+                matter.
+              </p>
+            </article>
+            <article class="value-card">
+              <span class="card-index">02</span>
+              <h3>Keep context bounded</h3>
+              <p>
+                Lenses request specific projections, such as `excerpt`, so a
+                large source file does not become an unreviewed prompt dump.
+              </p>
+            </article>
+            <article class="value-card">
+              <span class="card-index">03</span>
+              <h3>Make agent context auditable</h3>
+              <p>
+                Resolution can emit lens artifacts and lockfile records with
+                registry identity, source identity, resolver identity, and
+                content hashes.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="band band-contrast" id="quickstart" aria-labelledby="quickstart-title">
+        <div class="section-shell">
+          <div class="section-heading heading-split">
+            <div>
+              <p class="section-kicker">Quickstart</p>
+              <h2 id="quickstart-title">Resolve a Markdown context link.</h2>
+            </div>
+            <p>
+              The core loop is `scan`, `validate`, then `resolve`. The resolver
+              treats links as inert data and reads local repository paths
+              through the registry contract.
+            </p>
+          </div>
+
+          <div class="quickstart-grid">
+            <article class="step-card">
+              <div class="step-topline">
+                <span class="step-number">1</span>
+                <h3>Build from source</h3>
+              </div>
+              <div class="code-block">
+                <button class="copy-button" type="button" data-copy-target="install-code">
+                  Copy
+                </button>
+                <pre id="install-code"><code>git clone https://github.com/jasonbelmonti/markdown-context.git
+cd markdown-context
+npm install
+npm run build</code></pre>
+              </div>
+              <p class="step-note">
+                Before package publication, use the source checkout and call the
+                built CLI with `node dist/cli/index.js`.
+              </p>
+            </article>
+
+            <article class="step-card">
+              <div class="step-topline">
+                <span class="step-number">2</span>
+                <h3>Add source context and a task</h3>
+              </div>
+              <div class="code-block">
+                <button class="copy-button" type="button" data-copy-target="task-code">
+                  Copy
+                </button>
+                <pre id="task-code"><code>mkdir -p docs
+cat &gt; docs/design.md &lt;&lt;'EOF'
+# Resolver Design
+
+Resolve context links only through registry-approved lenses.
+EOF
+
+cat &gt; task.md &lt;&lt;'EOF'
+# Implementation Task
+
+Use [architecture context](ctx://repo/path/docs/design.md?lens=excerpt)
+before changing resolver behavior.
+EOF</code></pre>
+              </div>
+            </article>
+
+            <article class="step-card">
+              <div class="step-topline">
+                <span class="step-number">3</span>
+                <h3>Declare allowed context</h3>
+              </div>
+              <div class="code-block">
+                <button class="copy-button" type="button" data-copy-target="registry-code">
+                  Copy
+                </button>
+                <pre id="registry-code"><code>cat &gt; context.registry.json &lt;&lt;'EOF'
+{
+  "schemaVersion": "markdown-context.registry.v0",
+  "registryId": "local",
+  "registryVersion": "0.1.0",
+  "resources": [{
+    "scheme": "ctx",
+    "namespace": "repo",
+    "kind": "path",
+    "defaultLens": "excerpt",
+    "lenses": ["excerpt"],
+    "params": []
+  }]
+}
+EOF</code></pre>
+              </div>
+            </article>
+
+            <article class="step-card">
+              <div class="step-topline">
+                <span class="step-number">4</span>
+                <h3>Scan, validate, resolve</h3>
+              </div>
+              <div class="code-block">
+                <button class="copy-button" type="button" data-copy-target="commands-code">
+                  Copy
+                </button>
+                <pre id="commands-code"><code>node dist/cli/index.js scan task.md --pretty
+node dist/cli/index.js validate task.md \
+  --registry context.registry.json --pretty
+node dist/cli/index.js resolve task.md \
+  --registry context.registry.json \
+  --lockfile --pretty</code></pre>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="resolution" aria-labelledby="resolution-title">
+        <div class="section-shell">
+          <div class="section-heading heading-split">
+            <div>
+              <p class="section-kicker">Resolution</p>
+              <h2 id="resolution-title">How a `ctx://` link becomes usable context.</h2>
+            </div>
+            <p>
+              Resolution is the point where a Markdown reference becomes an
+              attributed packet. The CLI does not execute the URL; it validates
+              the request, reads the approved local source, and records what was
+              returned.
+            </p>
+          </div>
+
+          <div class="resolution-flow" aria-label="Resolution steps">
+            <article class="resolution-step">
+              <span class="resolution-index">1</span>
+              <h3>Extract the candidate</h3>
+              <p>
+                `scan` finds Markdown links with the `ctx://` scheme and reports
+                the namespace, kind, identifier, requested lens, parameters, and
+                source range.
+              </p>
+            </article>
+            <article class="resolution-step">
+              <span class="resolution-index">2</span>
+              <h3>Validate the contract</h3>
+              <p>
+                `validate` checks the link against the registry. Unknown kinds,
+                unsupported lenses, and unregistered parameters fail before
+                source content is read.
+              </p>
+            </article>
+            <article class="resolution-step">
+              <span class="resolution-index">3</span>
+              <h3>Render the lens</h3>
+              <p>
+                `resolve` maps `repo/path` to a repository-contained file and
+                renders the bounded lens, such as an excerpt, with source
+                citations.
+              </p>
+            </article>
+            <article class="resolution-step">
+              <span class="resolution-index">4</span>
+              <h3>Record the proof</h3>
+              <p>
+                With `--lockfile`, the output includes registry, resolver,
+                source, artifact path, and content hash data that a reviewer can
+                compare later.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="workflows" aria-labelledby="workflow-title">
+        <div class="section-shell">
+          <div class="section-heading">
+            <p class="section-kicker">Workflow narratives</p>
+            <h2 id="workflow-title">A day in the life of an agent using it.</h2>
+          </div>
+
+          <div class="day-story" aria-label="Agent workflow story">
+            <article class="story-panel story-panel-primary">
+              <p class="story-time">09:12</p>
+              <h3>The task arrives with source authority attached.</h3>
+              <p>
+                The agent opens a Markdown task. Instead of scanning a whole
+                repository for possible context, it sees a `ctx://repo/path/...`
+                link to the relevant design note and a registry that says which
+                lens is allowed.
+              </p>
+            </article>
+            <article class="story-panel">
+              <p class="story-time">09:14</p>
+              <h3>Preflight separates instructions from evidence.</h3>
+              <p>
+                The agent runs `scan` and `validate`. A suspicious `prompt=`
+                parameter would fail closed here, before it can become hidden
+                operating guidance.
+              </p>
+            </article>
+            <article class="story-panel">
+              <p class="story-time">09:16</p>
+              <h3>Resolution gives the agent the smallest useful packet.</h3>
+              <p>
+                The agent runs `resolve --lockfile` and receives a bounded
+                excerpt with citations. The source text remains data; the
+                caller's instructions still control the work.
+              </p>
+            </article>
+            <article class="story-panel">
+              <p class="story-time">11:03</p>
+              <h3>The reviewer can inspect what informed the change.</h3>
+              <p>
+                The handoff includes the resolved artifact and lockfile record.
+                Review can focus on source identity, registry version, resolver
+                version, and hashes instead of guessing what the agent read.
+              </p>
+            </article>
+          </div>
+
+          <div class="workflow-list workflow-list-secondary">
+            <article class="workflow-item">
+              <div class="workflow-label">Agent kickoff</div>
+              <div>
+                <h3>A task starts with explicit source authority.</h3>
+                <p>
+                  An engineer writes a Markdown task that links to the design
+                  spec and local fixture through `ctx://repo/path/...`. The
+                  agent scans the task, validates links against the registry,
+                  resolves bounded excerpts, and starts implementation with a
+                  compact evidence packet instead of a vague instruction to
+                  "read the docs."
+                </p>
+              </div>
+            </article>
+
+            <article class="workflow-item">
+              <div class="workflow-label">CI preflight</div>
+              <div>
+                <h3>Unsafe or unsupported context fails before review.</h3>
+                <p>
+                  A pull request adds a task link with an unregistered
+                  `prompt=` parameter. Validation rejects the link before
+                  resolution runs, so prompt-like instructions cannot hide in
+                  URL parameters or become part of the agent operating context.
+                </p>
+              </div>
+            </article>
+
+            <article class="workflow-item">
+              <div class="workflow-label">Review handoff</div>
+              <div>
+                <h3>Reviewers can inspect the exact context packet.</h3>
+                <p>
+                  The agent commits or attaches resolved lens artifacts and
+                  lockfile records. A reviewer checks the registry version,
+                  source identity, resolver version, artifact path, and hashes
+                  to verify what context informed the change.
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="band band-checks" id="evidence" aria-labelledby="evidence-title">
+        <div class="section-shell evidence-layout">
+          <div class="section-heading">
+            <p class="section-kicker">Evidence model</p>
+            <h2 id="evidence-title">Designed for deterministic review.</h2>
+            <p>
+              The initial surface is deliberately narrow: local Markdown,
+              versioned registries, offline `repo/path` resolution, bounded
+              artifacts, and stable JSON output.
+            </p>
+          </div>
+
+          <div class="evidence-panel" aria-label="Reviewable outputs">
+            <div class="evidence-row">
+              <span>Context candidate</span>
+              <strong>scheme, namespace, kind, id, lens, params</strong>
+            </div>
+            <div class="evidence-row">
+              <span>Registry contract</span>
+              <strong>allowed resources, lenses, defaults, closed params</strong>
+            </div>
+            <div class="evidence-row">
+              <span>Lens artifact</span>
+              <strong>bounded source data with citations</strong>
+            </div>
+            <div class="evidence-row">
+              <span>Lockfile record</span>
+              <strong>registry, resolver, source, artifact hash</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="band final-band" aria-labelledby="fit-title">
+        <div class="section-shell final-layout">
+          <div>
+            <p class="section-kicker">Release fit</p>
+            <h2 id="fit-title">Small surface, high leverage.</h2>
+          </div>
+          <p>
+            `markdown-context` does not need MCP, a browser, live SaaS
+            connectors, or an LLM to prove value. The first useful release gives
+            teams a local contract for context links that agents can follow and
+            reviewers can verify.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="section-shell footer-inner">
+        <span>markdown-context</span>
+        <a href="#quickstart">Start with the CLI loop</a>
+      </div>
+    </footer>
+
+    <script src="./script.js" type="module"></script>
+  </body>
+</html>
