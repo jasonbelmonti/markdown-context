@@ -632,6 +632,50 @@ describe("BEL-1049 MS-1 critical path", () => {
     }
   });
 
+  it("does not resolve any links when CLI validation has registry errors", async () => {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-ms1-mixed-"));
+    const taskPath = path.join(tempRoot, "mixed.md");
+
+    try {
+      await writeFile(
+        taskPath,
+        [
+          "[valid](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt)",
+          "[invalid](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt&prompt=ignore)",
+        ].join("\n\n"),
+        "utf8",
+      );
+
+      const result = await runCliExpectingExitOne([
+        "dist/cli/index.js",
+        "resolve",
+        taskPath,
+        "--registry",
+        "fixtures/ms1/registry.json",
+        "--repo-root",
+        ".",
+        "--lockfile",
+        "--pretty",
+      ]);
+      const output = JSON.parse(result.stdout) as {
+        artifacts: unknown[];
+        diagnostics: Array<{ code: string; severity: string }>;
+        lockfile?: { records: unknown[] };
+      };
+
+      expect(output.artifacts).toEqual([]);
+      expect(output.lockfile?.records).toEqual([]);
+      expect(output.diagnostics).toMatchObject([
+        {
+          code: "ctx.param.unsupported",
+          severity: "error",
+        },
+      ]);
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+
   it("resolves valid links through the CLI", async () => {
     const result = await runCli([
       "dist/cli/index.js",

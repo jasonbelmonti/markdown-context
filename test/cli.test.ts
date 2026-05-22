@@ -161,7 +161,7 @@ describe("CLI operator contract", () => {
     }
   });
 
-  it("merges validate and resolve diagnostics in resolve output", async () => {
+  it("does not resolve any links after validation errors", async () => {
     const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-"));
     const repoRoot = path.join(tempRoot, "repo");
     const taskPath = path.join(tempRoot, "task.md");
@@ -188,12 +188,13 @@ describe("CLI operator contract", () => {
         "--pretty",
       ], 1);
       const output = JSON.parse(result.stdout) as {
+        artifacts: unknown[];
         diagnostics: Array<{ code: string }>;
       };
 
+      expect(output.artifacts).toEqual([]);
       expect(output.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
         "ctx.param.unsupported",
-        "ctx.repoPath.unresolved",
       ]);
     } finally {
       await rm(tempRoot, { force: true, recursive: true });
@@ -620,7 +621,7 @@ describe("CLI operator contract", () => {
     expect(output.lockfile.records).toEqual([]);
   });
 
-  it("keeps lockfile provenance for emitted artifacts when other links are rejected", async () => {
+  it("does not emit artifacts or lockfile records when other links are rejected", async () => {
     const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-mixed-"));
     const taskPath = path.join(tempRoot, "mixed.md");
 
@@ -652,11 +653,11 @@ describe("CLI operator contract", () => {
       };
 
       expect(result.stderr).toBe("");
-      expect(output.artifacts).toHaveLength(1);
+      expect(output.artifacts).toEqual([]);
       expect(output.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
         "ctx.param.unsupported",
       );
-      expect(output.lockfile.records).toHaveLength(1);
+      expect(output.lockfile.records).toEqual([]);
     } finally {
       await rm(tempRoot, { force: true, recursive: true });
     }
