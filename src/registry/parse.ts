@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
-import type { Registry, RegistryResource } from "./types.js";
+import { registryResourceIdentityKey } from "./resource-identity.js";
+import type { Registry, RegistryIgnoredResource, RegistryResource } from "./types.js";
 
 export async function loadRegistry(path: string): Promise<Registry> {
   return parseRegistry(JSON.parse(await readFile(path, "utf8")));
@@ -24,11 +25,17 @@ export function parseRegistry(value: unknown): Registry {
   const parsedResources = resources.map(parseResource);
   validateUniqueResources(parsedResources);
 
+  const ignoredResources = value.ignoredResources;
+  const parsedIgnoredResources =
+    ignoredResources === undefined ? [] : parseIgnoredResources(ignoredResources);
+  validateNoResourcePolicyOverlap(parsedResources, parsedIgnoredResources);
+
   return {
     schemaVersion,
     registryId: stringValue(value.registryId, "registryId"),
     registryVersion: stringValue(value.registryVersion, "registryVersion"),
     resources: parsedResources,
+    ...(parsedIgnoredResources.length > 0 ? { ignoredResources: parsedIgnoredResources } : {}),
   };
 }
 
@@ -66,17 +73,76 @@ function parseResource(value: unknown): RegistryResource {
   };
 }
 
+function parseIgnoredResources(value: unknown): RegistryIgnoredResource[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Registry ignoredResources must be an array.");
+  }
+
+  const ignoredResources = value.map(parseIgnoredResource);
+  validateUniqueIgnoredResources(ignoredResources);
+
+  return ignoredResources;
+}
+
+function parseIgnoredResource(value: unknown): RegistryIgnoredResource {
+  if (!isRecord(value)) {
+    throw new Error("Registry ignoredResource must be an object.");
+  }
+
+  const scheme = stringValue(value.scheme, "ignoredResource.scheme").toLowerCase();
+  if (scheme !== "ctx") {
+    throw new Error(`Registry ignoredResource.scheme must be ctx: ${scheme}.`);
+  }
+
+  return {
+    scheme,
+    namespace: stringValue(value.namespace, "ignoredResource.namespace").toLowerCase(),
+    kind: stringValue(value.kind, "ignoredResource.kind"),
+  };
+}
+
 function validateUniqueResources(resources: readonly RegistryResource[]): void {
   const seen = new Set<string>();
 
   for (const resource of resources) {
-    const key = `${resource.scheme}\0${resource.namespace}\0${resource.kind}`;
+    const key = registryResourceIdentityKey(resource);
     if (seen.has(key)) {
       throw new Error(
         `Registry resources must not contain duplicate resource declarations: ${resource.scheme}://${resource.namespace}/${resource.kind}.`,
       );
     }
     seen.add(key);
+  }
+}
+
+function validateUniqueIgnoredResources(
+  ignoredResources: readonly RegistryIgnoredResource[],
+): void {
+  const seen = new Set<string>();
+
+  for (const ignoredResource of ignoredResources) {
+    const key = registryResourceIdentityKey(ignoredResource);
+    if (seen.has(key)) {
+      throw new Error(
+        `Registry ignoredResources must not contain duplicate resource declarations: ${ignoredResource.scheme}://${ignoredResource.namespace}/${ignoredResource.kind}.`,
+      );
+    }
+    seen.add(key);
+  }
+}
+
+function validateNoResourcePolicyOverlap(
+  resources: readonly RegistryResource[],
+  ignoredResources: readonly RegistryIgnoredResource[],
+): void {
+  const resolvableResourceKeys = new Set(resources.map(registryResourceIdentityKey));
+
+  for (const ignoredResource of ignoredResources) {
+    if (resolvableResourceKeys.has(registryResourceIdentityKey(ignoredResource))) {
+      throw new Error(
+        `Registry ignoredResources must not overlap resource declarations: ${ignoredResource.scheme}://${ignoredResource.namespace}/${ignoredResource.kind}.`,
+      );
+    }
   }
 }
 

@@ -266,6 +266,77 @@ describe("BEL-1049 MS-1 critical path", () => {
     ]);
   });
 
+  it("keeps ignored trace links visible in scan and out of public validation", async () => {
+    const registry = parseRegistry(
+      JSON.parse(await readFile("fixtures/ms1/registry-ignored-trace.json", "utf8")),
+    );
+    const scan = scanMarkdown(mixedTraceMarkdown(), "mixed-trace.md");
+    const validated = validatePublicScanResult(scan, registry);
+
+    expect(scan.diagnostics).toEqual([]);
+    expect(scan.links).toHaveLength(3);
+    expect(scan.links.map((link) => link.canonicalUrl)).toEqual([
+      "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt",
+      "ctx://trace/entity/TASK-1?lens=graph&prompt=ignore",
+      "ctx://trace/range/TASK-1/TASK-2",
+    ]);
+    expect(validated.valid).toBe(true);
+    expect(validated.diagnostics).toEqual([]);
+    expect(validated.links).toHaveLength(1);
+    expect(validated.links[0]?.canonicalUrl).toBe(
+      "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt",
+    );
+  });
+
+  it("keeps trace links fail-closed without ignored-resource policy", async () => {
+    const registry = parseRegistry(
+      JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
+    );
+    const scan = scanMarkdown(mixedTraceMarkdown(), "mixed-trace.md");
+    const resolved = await resolvePublicScanResult(scan, registry, {
+      repoRoot: process.cwd(),
+      lockfile: true,
+    });
+
+    expect(scan.links).toHaveLength(3);
+    expect(resolved.artifacts).toEqual([]);
+    expect(resolved.lockfile?.records).toEqual([]);
+    expect(resolved.diagnostics).toMatchObject([
+      {
+        code: "ctx.namespace.unsupported",
+        severity: "error",
+      },
+      {
+        code: "ctx.namespace.unsupported",
+        severity: "error",
+      },
+    ]);
+  });
+
+  it("resolves repo/path links while ignoring trace resources through the root public API", async () => {
+    const registry = parseRegistry(
+      JSON.parse(await readFile("fixtures/ms1/registry-ignored-trace.json", "utf8")),
+    );
+    const scan = scanMarkdown(mixedTraceMarkdown(), "mixed-trace.md");
+    const resolved = await resolvePublicScanResult(scan, registry, {
+      repoRoot: process.cwd(),
+      lockfile: true,
+    });
+
+    expect(resolved.diagnostics).toEqual([]);
+    expect(resolved.artifacts).toHaveLength(1);
+    expect(resolved.artifacts[0]?.canonicalUrl).toBe(
+      "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt",
+    );
+    expect(resolved.lockfile?.records).toHaveLength(1);
+    expect(resolved.lockfile?.records[0]?.canonicalUrl).toBe(
+      "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt",
+    );
+    expect(
+      resolved.lockfile?.records.some((record) => record.canonicalUrl.includes("ctx://trace/")),
+    ).toBe(false);
+  });
+
   it("resolves accepted links through the root public API safe pipeline", async () => {
     const registry = parseRegistry(
       JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
@@ -543,6 +614,34 @@ describe("BEL-1049 MS-1 critical path", () => {
     );
   });
 
+  it("rejects malformed ignored-resource registry declarations", () => {
+    expect(() =>
+      parseRegistry({
+        ...registryWithIgnoredTrace(),
+        ignoredResources: [{ scheme: "https", namespace: "trace", kind: "entity" }],
+      }),
+    ).toThrow("Registry ignoredResource.scheme must be ctx: https.");
+
+    expect(() =>
+      parseRegistry({
+        ...registryWithIgnoredTrace(),
+        ignoredResources: [
+          { scheme: "ctx", namespace: "trace", kind: "entity" },
+          { scheme: "CTX", namespace: "TRACE", kind: "entity" },
+        ],
+      }),
+    ).toThrow(
+      "Registry ignoredResources must not contain duplicate resource declarations: ctx://trace/entity.",
+    );
+
+    expect(() =>
+      parseRegistry({
+        ...registryWithIgnoredTrace(),
+        ignoredResources: [{ scheme: "ctx", namespace: "repo", kind: "path" }],
+      }),
+    ).toThrow("Registry ignoredResources must not overlap resource declarations: ctx://repo/path.");
+  });
+
   it("returns scan diagnostics from validate CLI output", async () => {
     const result = await runCliExpectingExitOne([
       "dist/cli/index.js",
@@ -728,6 +827,27 @@ function validRegistryResource() {
     lenses: ["excerpt"],
     params: [],
   };
+}
+
+function registryWithIgnoredTrace() {
+  return {
+    schemaVersion: "markdown-context.registry.v0",
+    registryId: "fixtures/ms1",
+    registryVersion: "0.1.0",
+    resources: [validRegistryResource()],
+    ignoredResources: [
+      { scheme: "ctx", namespace: "trace", kind: "entity" },
+      { scheme: "ctx", namespace: "trace", kind: "range" },
+    ],
+  };
+}
+
+function mixedTraceMarkdown(): string {
+  return [
+    "[valid](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt)",
+    "[trace entity](ctx://trace/entity/TASK-1?lens=graph&prompt=ignore)",
+    "[trace range](ctx://trace/range/TASK-1/TASK-2)",
+  ].join("\n\n");
 }
 
 async function runCli(args: string[]): Promise<{ stdout: string }> {

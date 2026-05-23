@@ -5,11 +5,13 @@ import type {
   ValidatedContextLink,
   ValidateResult,
 } from "../core/types.js";
+import { isSameRegistryResourceIdentity } from "./resource-identity.js";
 import type { Registry, RegistryResource } from "./types.js";
 
-type RegistryResourceMatch =
-  | { resource: RegistryResource; diagnostic?: never }
-  | { resource?: never; diagnostic: ContextDiagnostic };
+type RegistryLinkPolicyMatch =
+  | { resource: RegistryResource; ignored?: never; diagnostic?: never }
+  | { ignored: true; resource?: never; diagnostic?: never }
+  | { resource?: never; ignored?: never; diagnostic: ContextDiagnostic };
 
 export function validateContextLinks(
   links: readonly ContextLinkCandidate[],
@@ -19,14 +21,18 @@ export function validateContextLinks(
   const diagnostics: ContextDiagnostic[] = [];
 
   for (const link of links) {
-    const resourceMatch = findRegistryResource(link, registry);
+    const policyMatch = matchRegistryLinkPolicy(link, registry);
 
-    if (resourceMatch.diagnostic !== undefined) {
-      diagnostics.push(resourceMatch.diagnostic);
+    if (policyMatch.ignored === true) {
       continue;
     }
 
-    const resource = resourceMatch.resource;
+    if (policyMatch.diagnostic !== undefined) {
+      diagnostics.push(policyMatch.diagnostic);
+      continue;
+    }
+
+    const resource = policyMatch.resource;
     const invalidDiagnostic = validateLinkAgainstResource(link, resource);
     if (invalidDiagnostic !== undefined) {
       diagnostics.push(invalidDiagnostic);
@@ -101,10 +107,14 @@ function validateLinkAgainstResource(
   return undefined;
 }
 
-function findRegistryResource(
+function matchRegistryLinkPolicy(
   link: ContextLinkCandidate,
   registry: Registry,
-): RegistryResourceMatch {
+): RegistryLinkPolicyMatch {
+  if (isIgnoredResource(link, registry)) {
+    return { ignored: true };
+  }
+
   const schemeResources = registry.resources.filter((resource) => resource.scheme === link.scheme);
   if (schemeResources.length === 0) {
     return {
@@ -141,6 +151,13 @@ function findRegistryResource(
   }
 
   return { resource };
+}
+
+function isIgnoredResource(link: ContextLinkCandidate, registry: Registry): boolean {
+  return (
+    registry.ignoredResources?.some((resource) => isSameRegistryResourceIdentity(resource, link)) ??
+    false
+  );
 }
 
 function linkDiagnostic(

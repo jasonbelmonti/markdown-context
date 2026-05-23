@@ -88,12 +88,30 @@ Validation is controlled by a local JSON registry:
       "lenses": ["excerpt"],
       "params": []
     }
+  ],
+  "ignoredResources": [
+    {
+      "scheme": "ctx",
+      "namespace": "trace",
+      "kind": "entity"
+    },
+    {
+      "scheme": "ctx",
+      "namespace": "trace",
+      "kind": "range"
+    }
   ]
 }
 ```
 
 The registry is fail-closed: unsupported schemes, namespaces, kinds, lenses,
 params, and optional `idPattern` mismatches produce diagnostics.
+
+`ignoredResources` is optional and non-resolving. It lets one document contain
+links from another `ctx://` ecosystem, such as `ctx://trace/entity/...`, without
+blocking supported `ctx://repo/path/...` resolution. Ignored links are still
+reported by `scan`, but validation excludes them from resolved links and they do
+not create artifacts, source reads, lockfile records, or resolver diagnostics.
 
 ## Library API
 

@@ -55,6 +55,18 @@ Create a JSON registry that declares which context links are allowed:
       "lenses": ["excerpt"],
       "params": []
     }
+  ],
+  "ignoredResources": [
+    {
+      "scheme": "ctx",
+      "namespace": "trace",
+      "kind": "entity"
+    },
+    {
+      "scheme": "ctx",
+      "namespace": "trace",
+      "kind": "range"
+    }
   ]
 }
 ```
@@ -71,9 +83,23 @@ Resource fields:
 | `lenses` | Yes | Non-empty list of allowed lenses. |
 | `params` | No | Closed list of allowed non-`lens` query parameters. |
 
+Ignored-resource fields:
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `scheme` | Yes | Must be `ctx`. |
+| `namespace` | Yes | Namespace to ignore during validation. |
+| `kind` | Yes | Resource kind to ignore during validation. |
+
 Validation fails closed when a link uses an unsupported resource, unsupported
 lens, duplicate URL parameter, unsupported parameter, or id that does not match
-`idPattern`.
+`idPattern`. `ignoredResources` is opt-in and only applies to exact
+scheme/namespace/kind matches. Ignored links remain visible in `scan` output,
+but `validate` excludes them from validated links, and `resolve` does not read
+sources, dispatch resolvers, emit artifacts, or write lockfile records for them.
+This is intended for mixed `ctx://` ecosystems such as documents that contain
+both resolvable `ctx://repo/path/...` links and non-resolvable
+`ctx://trace/entity/...` trace identity links.
 
 ## 4. Scan Markdown
 
