@@ -198,6 +198,34 @@ describe("lockfile contract", () => {
     expect(hashRegistry(omittedParams)).toBe(hashRegistry(emptyParams));
   });
 
+  it("includes ignored resources in the canonical registry contract", () => {
+    const withoutIgnored = fixtureRegistry();
+    const withIgnored = parseRegistry({
+      schemaVersion: "markdown-context.registry.v0",
+      registryId: "ms1-local",
+      registryVersion: "0.1.0",
+      resources: [
+        {
+          scheme: "ctx",
+          namespace: "repo",
+          kind: "path",
+          defaultLens: "excerpt",
+          lenses: ["excerpt"],
+          params: [],
+        },
+      ],
+      ignoredResources: [
+        { scheme: "ctx", namespace: "trace", kind: "range" },
+        { scheme: "CTX", namespace: "TRACE", kind: "entity" },
+      ],
+    });
+
+    expect(serializeCanonicalRegistry(withIgnored)).toContain(
+      '"ignoredResources":[{"kind":"entity","namespace":"trace","scheme":"ctx"},{"kind":"range","namespace":"trace","scheme":"ctx"}]',
+    );
+    expect(hashRegistry(withIgnored)).not.toBe(hashRegistry(withoutIgnored));
+  });
+
   it("builds lockfile records with explicit registry, source, artifact, and option provenance", () => {
     const registry = fixtureRegistry();
     const artifact = fixtureArtifact();

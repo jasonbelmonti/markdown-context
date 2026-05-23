@@ -259,6 +259,53 @@ describe("CLI operator contract", () => {
     }
   });
 
+  it("resolves repo/path links and omits ignored trace links from CLI lockfiles", async () => {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-trace-"));
+    const taskPath = path.join(tempRoot, "mixed-trace.md");
+    const lockfilePath = path.join(tempRoot, "context.lock.json");
+
+    try {
+      await writeFile(taskPath, mixedTraceMarkdown(), "utf8");
+
+      const result = await runCli([
+        "dist/cli/index.js",
+        "resolve",
+        taskPath,
+        "--registry",
+        "fixtures/ms1/registry-ignored-trace.json",
+        "--repo-root",
+        ".",
+        "--lockfile",
+        "--lockfile-out",
+        lockfilePath,
+        "--pretty",
+      ]);
+      const output = JSON.parse(result.stdout) as {
+        artifacts: Array<{ canonicalUrl: string; resolverId: string }>;
+        diagnostics: unknown[];
+        lockfile: { records: Array<{ canonicalUrl: string }> };
+      };
+      const writtenLockfile = JSON.parse(await readFile(lockfilePath, "utf8")) as {
+        records: Array<{ canonicalUrl: string }>;
+      };
+
+      expect(result.stderr).toBe("");
+      expect(output.diagnostics).toEqual([]);
+      expect(output.artifacts).toEqual([
+        expect.objectContaining({
+          canonicalUrl: "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt",
+          resolverId: "repo-path",
+        }),
+      ]);
+      expect(output.lockfile.records.map((record) => record.canonicalUrl)).toEqual([
+        "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt",
+      ]);
+      expect(writtenLockfile.records).toEqual(output.lockfile.records);
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+
   it("uses deterministic code-unit ordering for JSON object keys", () => {
     expect(
       stableJson({
@@ -790,6 +837,14 @@ function resolveWithLockfileArgs(lockfilePath: string): string[] {
     lockfilePath,
     "--pretty",
   ];
+}
+
+function mixedTraceMarkdown(): string {
+  return [
+    "[valid](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt)",
+    "[trace entity](ctx://trace/entity/TASK-1?lens=graph&prompt=ignore)",
+    "[trace range](ctx://trace/range/TASK-1/TASK-2)",
+  ].join("\n\n");
 }
 
 async function runCli(args: string[]): Promise<{ stdout: string; stderr: string }> {

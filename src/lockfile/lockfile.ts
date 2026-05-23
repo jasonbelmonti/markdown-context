@@ -1,4 +1,9 @@
-import type { Registry, RegistryResource } from "../registry/registry.js";
+import type {
+  Registry,
+  RegistryIgnoredResource,
+  RegistryResource,
+} from "../registry/registry.js";
+import { compareRegistryResourceIdentities } from "../registry/resource-identity.js";
 import type { CanonicalJsonObject } from "./canonical-json.js";
 import { cloneCanonicalJsonObject, serializeCanonicalJson } from "./canonical-json.js";
 import { hashCanonicalJson } from "./hash.js";
@@ -70,14 +75,22 @@ export function hashRegistry(registry: Registry): Sha256Hash {
 }
 
 function canonicalRegistrySnapshot(registry: Registry): CanonicalJsonObject {
-  return {
+  const snapshot: CanonicalJsonObject = {
     registryId: registry.registryId,
     registryVersion: registry.registryVersion,
     resources: [...registry.resources]
-      .sort(compareRegistryResources)
+      .sort(compareRegistryResourceIdentities)
       .map(canonicalRegistryResource),
     schemaVersion: registry.schemaVersion,
   };
+
+  if ((registry.ignoredResources?.length ?? 0) > 0) {
+    snapshot.ignoredResources = [...(registry.ignoredResources ?? [])]
+      .sort(compareRegistryResourceIdentities)
+      .map(canonicalRegistryIgnoredResource);
+  }
+
+  return snapshot;
 }
 
 function canonicalRegistryResource(resource: RegistryResource): CanonicalJsonObject {
@@ -97,12 +110,14 @@ function canonicalRegistryResource(resource: RegistryResource): CanonicalJsonObj
   return snapshot;
 }
 
-function compareRegistryResources(left: RegistryResource, right: RegistryResource): number {
-  return (
-    compareCodeUnits(left.scheme, right.scheme) ||
-    compareCodeUnits(left.namespace, right.namespace) ||
-    compareCodeUnits(left.kind, right.kind)
-  );
+function canonicalRegistryIgnoredResource(
+  resource: RegistryIgnoredResource,
+): CanonicalJsonObject {
+  return {
+    kind: resource.kind,
+    namespace: resource.namespace,
+    scheme: resource.scheme,
+  };
 }
 
 function compareLockfileRecords(

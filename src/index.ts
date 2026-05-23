@@ -20,7 +20,7 @@ export type {
   LockfileSourceIdentity,
   Sha256Hash,
 } from "./lockfile/types.js";
-export type { Registry, RegistryResource } from "./registry/registry.js";
+export type { Registry, RegistryIgnoredResource, RegistryResource } from "./registry/registry.js";
 export type { ResolveScanResultOptions } from "./pipeline/resolve.js";
 export { scanMarkdown } from "./core/scan.js";
 export {
