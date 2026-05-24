@@ -10,21 +10,34 @@ Branch: `codex/bel-1184-lockfile-determinism-package-audit`
 
 Source revision under audit: `be8050011bfc30f7f1dcb644eb02b8335f51f14c`
 
+BEL-1223 closure update captured: 2026-05-24 09:50 CDT
+
+BEL-1223 worktree: `/Users/jasonbelmonti/Documents/Development/markdown-context/.worktrees/bel-1223`
+
+BEL-1223 branch: `codex/bel-1223-license-artifact`
+
+BEL-1223 base revision: `81ffe7da04ea298ab8f4e34129bb8febb1ed8b55`
+
 ## Verdict
 
-REJECT first-release readiness for the BEL-1184 boundary until the release owner either adds a top-level `LICENSE` artifact or records an explicit waiver.
+Original BEL-1184 verdict: REJECT first-release readiness for the BEL-1184 boundary until the release owner either adds a top-level `LICENSE` artifact or records an explicit waiver.
 
-Deterministic output, canonical lockfile provenance, hash derivation, package contents, bin entrypoint, root import, and type declaration evidence all passed for the current source revision. The only release-blocking gap found in this track is release metadata: `package.json` declares `"license": "MIT"`, but no top-level `LICENSE` file exists in the source tree or packed artifact.
+BEL-1223 closure update: CLEARS the missing release license artifact blocker for this audit boundary. The repository now has a top-level MIT `LICENSE` file consistent with `package.json` declaring `"license": "MIT"`, and `npm pack --dry-run --json` includes `LICENSE` in the packed file set.
+
+Deterministic output, canonical lockfile provenance, hash derivation, package contents, bin entrypoint, root import, and type declaration evidence all passed for the source revision originally audited by BEL-1184. At original audit capture time, the only release-blocking gap found in this track was release metadata: `package.json` declared `"license": "MIT"`, but no top-level `LICENSE` file existed in the source tree or packed artifact. BEL-1223 supplies that artifact and package proof.
 
 The missing dependency lockfile is classified as an accepted release risk with follow-up, not a blocker for this library package artifact, because `.gitignore` explicitly excludes `package-lock.json` and the packed artifact correctly relies on package metadata rather than shipping development dependency state. The release owner should still document dependency-lockfile policy before future reproducibility claims.
 
 Approval of this artifact does not approve npm publication, release tagging, GitHub Release creation, or code fixes.
+
+The BEL-1223 closure update does not approve npm publication, release tagging, GitHub Release creation, or dependency lockfile policy changes.
 
 ## Source Authority
 
 | Source | Status | Evidence |
 | --- | --- | --- |
 | Linear `BEL-1184` | loaded | Defines the audit objective, source authority, scope, success criteria, review boundary, validation evidence, and follow-up expectations. |
+| Linear `BEL-1223` | loaded | Defines the license-artifact closure task for the BEL-1184 release metadata blocker. |
 | Linear `BEL-1178` | loaded | Parent release-audit program; prohibits publication, tagging, release mutation, and broad implementation fixes in this audit track. |
 | `.codex/execution-briefs/bel-1184/execution-brief.md` | validated | Durable execution context for this audit. |
 | `.codex/execution-plans/bel-1184/execution-plan.md` | validated | Executable route, file touch plan, viability review, and validation gates. |
@@ -226,6 +239,42 @@ Excluded payload categories:
 
 Result: pass for package contents and exclusions. The dry-run package contains the intended runtime and type declaration files and excludes source-tree-only artifacts.
 
+### BEL-1223 License Artifact Closure
+
+Commands:
+
+```bash
+npm test
+npm pack --dry-run --json
+```
+
+Observed test result:
+
+```text
+Test Files  6 passed (6)
+Tests       108 passed (108)
+```
+
+Observed package summary after adding the top-level `LICENSE`:
+
+```json
+{
+  "filename": "jasonbelmonti-markdown-context-0.1.0.tgz",
+  "entryCount": 75,
+  "size": 19500,
+  "unpackedSize": 80547,
+  "shasum": "3ce953b120e743464a36754c6ad44a471c0a11c8",
+  "hasLicense": true,
+  "licenseEntry": {
+    "path": "LICENSE",
+    "size": 1071,
+    "mode": 420
+  }
+}
+```
+
+Result: pass. The packed artifact now includes the declared MIT license text at `LICENSE`.
+
 ### Packed Tarball Install Smoke
 
 Command shape:
@@ -336,26 +385,26 @@ Evidence:
 
 No package entrypoint, export, type declaration, or unintended payload blocker was found.
 
-### F-6: Release metadata contains README and package license declaration but lacks a LICENSE artifact
+### F-6: Release metadata contains README and package license artifact
 
-Assessment: blocker until fixed or waived.
+Assessment: resolved by BEL-1223.
 
 Evidence:
 
 - `README.md` exists at the repository root and is included by `npm pack --dry-run --json`.
 - `package.json:5` declares `"license": "MIT"`.
-- No top-level `LICENSE` or `LICENSE.*` file exists in the repository root.
-- `npm pack --dry-run --json` includes no license artifact.
+- `LICENSE` exists at the repository root and contains standard MIT license text.
+- BEL-1223 `npm pack --dry-run --json` includes `LICENSE` in the packed file set.
 
 Classification:
 
 | Item | Status | Classification | Rationale |
 | --- | --- | --- | --- |
 | Top-level README | present in source and package | pass | Included in dry-run package payload. |
-| License declaration | present in `package.json` | partial pass | Declares MIT, but does not provide license text artifact. |
-| Top-level LICENSE file | absent | release blocker | The package is being prepared for external consumption; the release artifact should ship the declared license text unless the release owner explicitly waives this requirement. |
+| License declaration | present in `package.json` | pass | Declares MIT and is now paired with matching license text. |
+| Top-level LICENSE file | present in source and package | pass | The package ships the declared MIT license text. |
 
-Required action before release readiness approval: add a top-level `LICENSE` file matching the declared MIT license, or record an explicit release-owner waiver.
+Required action before release readiness approval: complete BEL-1223 review and merge so the license artifact is present on the release branch.
 
 ### F-7: Dependency lockfile is absent by repository policy and should be documented
 
@@ -378,13 +427,14 @@ Rationale: The published package artifact should not ship development dependency
 - [x] `--lockfile` and `--lockfile-out` produce deterministic canonical lockfile records.
 - [x] Registry hashes, source hashes, artifact hashes, and artifact paths are derived from documented stable inputs.
 - [x] `npm pack --dry-run --json` includes intended files and excludes unintended files.
+- [x] BEL-1223 `npm pack --dry-run --json` includes top-level `LICENSE`.
 - [x] Absence or presence of top-level README, LICENSE, and dependency lockfile is classified.
 
 ## Blocking Findings
 
-- Missing release license artifact: no top-level `LICENSE` file exists, and the packed artifact contains no license text file even though `package.json` declares MIT.
+- None remaining inside the BEL-1184 release metadata boundary after the BEL-1223 license artifact update.
 
-Follow-up issue created: Linear `BEL-1223` (`Add MIT LICENSE artifact to markdown-context package`) blocks parent audit issue `BEL-1178` until the license artifact is added or the release owner records a waiver.
+Follow-up issue closure: Linear `BEL-1223` (`Add MIT LICENSE artifact to markdown-context package`) supplies the license artifact and package proof needed to clear this blocker once the BEL-1223 diff is reviewed and merged.
 
 ## Accepted Risks
 
@@ -392,6 +442,6 @@ Follow-up issue created: Linear `BEL-1223` (`Add MIT LICENSE artifact to markdow
 
 ## Follow-Up Recommendations
 
-- Complete Linear `BEL-1223` by adding a top-level MIT `LICENSE` file or recording a release-owner waiver before first-release approval.
+- Complete Linear `BEL-1223` review and merge so the top-level MIT `LICENSE` file is present on the release branch before first-release approval.
 - Document dependency lockfile policy for this package.
 - Consider adding package smoke-test automation that runs `npm pack`, installs the tarball, checks root import, checks type declarations, and exercises the installed bin.
