@@ -358,6 +358,106 @@ describe("BEL-1049 MS-1 critical path", () => {
     });
   });
 
+  it("resolves source-policy-accepted links through the root public API", async () => {
+    const registry = parseRegistry(
+      registryWithResource({
+        sourcePolicy: { allowedPathPrefixes: ["fixtures/ms1/"] },
+      }),
+    );
+    const markdown = await readFile("fixtures/ms1/task.md", "utf8");
+    const scan = scanMarkdown(markdown, "fixtures/ms1/task.md");
+    const resolved = await resolvePublicScanResult(scan, registry, {
+      repoRoot: process.cwd(),
+      lockfile: true,
+    });
+
+    expect(resolved.diagnostics).toEqual([]);
+    expect(resolved.artifacts).toHaveLength(1);
+    expect(resolved.lockfile?.records).toHaveLength(1);
+    expect(resolved.artifacts[0]).toMatchObject({
+      canonicalUrl: "ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt",
+      resolverId: "repo-path",
+    });
+  });
+
+  it("keeps source-policy-rejected inputs from resolving through the root public API", async () => {
+    const registry = parseRegistry(
+      registryWithResource({
+        sourcePolicy: { allowedPathPrefixes: ["fixtures/ms1/public/"] },
+      }),
+    );
+    const markdown = await readFile("fixtures/ms1/task.md", "utf8");
+    const scan = scanMarkdown(markdown, "fixtures/ms1/task.md");
+    const resolved = await resolvePublicScanResult(scan, registry, {
+      repoRoot: process.cwd(),
+      lockfile: true,
+    });
+
+    expect(resolved.artifacts).toEqual([]);
+    expect(resolved.lockfile?.records).toEqual([]);
+    expect(resolved.diagnostics).toMatchObject([
+      {
+        code: "ctx.sourcePolicy.disallowed",
+        severity: "error",
+      },
+    ]);
+  });
+
+  it("keeps normalized source-policy escapes from resolving through the root public API", async () => {
+    const registry = parseRegistry(
+      registryWithResource({
+        sourcePolicy: { allowedPathPrefixes: ["fixtures/ms1/public/"] },
+      }),
+    );
+    const scan = scanMarkdown(
+      "[escape](ctx://repo/path/fixtures/ms1/public%2F..%2Fcontext-source.md?lens=excerpt)",
+      "policy-escape.md",
+    );
+    const resolved = await resolvePublicScanResult(scan, registry, {
+      repoRoot: process.cwd(),
+      lockfile: true,
+    });
+
+    expect(scan.links[0]?.id).toBe("fixtures/ms1/public/../context-source.md");
+    expect(resolved.artifacts).toEqual([]);
+    expect(resolved.lockfile?.records).toEqual([]);
+    expect(resolved.diagnostics).toMatchObject([
+      {
+        code: "ctx.sourcePolicy.disallowed",
+        severity: "error",
+      },
+    ]);
+  });
+
+  it("keeps decoded-backslash source-policy escapes from resolving through the root public API", async () => {
+    const registry = parseRegistry(
+      registryWithResource({
+        sourcePolicy: {
+          allowedPathPrefixes: ["fixtures/ms1/"],
+          deniedPathPrefixes: ["fixtures/ms1/context-source.md"],
+        },
+      }),
+    );
+    const scan = scanMarkdown(
+      "[escape](ctx://repo/path/fixtures/ms1/public%5C..%5Ccontext-source.md?lens=excerpt)",
+      "policy-backslash-escape.md",
+    );
+    const resolved = await resolvePublicScanResult(scan, registry, {
+      repoRoot: process.cwd(),
+      lockfile: true,
+    });
+
+    expect(scan.links[0]?.id).toBe("fixtures/ms1/public\\..\\context-source.md");
+    expect(resolved.artifacts).toEqual([]);
+    expect(resolved.lockfile?.records).toEqual([]);
+    expect(resolved.diagnostics).toMatchObject([
+      {
+        code: "ctx.sourcePolicy.disallowed",
+        severity: "error",
+      },
+    ]);
+  });
+
   it("keeps public lockfile output stable across relative and absolute scan source paths", async () => {
     const registry = parseRegistry(
       JSON.parse(await readFile("fixtures/ms1/registry.json", "utf8")),
@@ -809,7 +909,7 @@ describe("BEL-1049 MS-1 critical path", () => {
   });
 });
 
-function registryWithResource(override: Partial<ReturnType<typeof validRegistryResource>>) {
+function registryWithResource(override: Record<string, unknown>) {
   return {
     schemaVersion: "markdown-context.registry.v0",
     registryId: "fixtures/ms1",

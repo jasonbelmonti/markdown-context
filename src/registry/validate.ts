@@ -6,6 +6,7 @@ import type {
   ValidateResult,
 } from "../core/types.js";
 import { isSameRegistryResourceIdentity } from "./resource-identity.js";
+import { isRepoPathAllowedBySourcePolicy } from "./source-policy.js";
 import type { Registry, RegistryResource } from "./types.js";
 
 type RegistryLinkPolicyMatch =
@@ -91,6 +92,14 @@ function validateLinkAgainstResource(
     return linkDiagnostic(
       "ctx.id.unsupported",
       "Context URL id does not match the registry resource idPattern.",
+      link,
+    );
+  }
+
+  if (!isRepoPathAllowedBySourcePolicy(link.id, resource.sourcePolicy)) {
+    return linkDiagnostic(
+      "ctx.sourcePolicy.disallowed",
+      "Context URL id is disallowed by the registry resource sourcePolicy.",
       link,
     );
   }
