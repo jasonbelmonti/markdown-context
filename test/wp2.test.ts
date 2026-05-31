@@ -184,6 +184,123 @@ describe("BEL-1048 WP-2 scan and validation hardening", () => {
     });
   });
 
+  it("enforces sourcePolicy allowed and denied path prefixes during validation", () => {
+    const registry = registryWithResourceOverride({
+      sourcePolicy: {
+        allowedPathPrefixes: ["fixtures/wp2/"],
+        deniedPathPrefixes: ["fixtures/wp2/private/"],
+      },
+    });
+    const scan = scanMarkdown(
+      [
+        "[accepted](ctx://repo/path/fixtures/wp2/inline.md?lens=excerpt)",
+        "[denied](ctx://repo/path/fixtures/wp2/private/secret.md?lens=excerpt)",
+      ].join("\n\n"),
+    );
+    const validated = validateContextLinks(scan.links, registry);
+
+    expect(validated.valid).toBe(false);
+    expect(validated.links.map((link) => link.id)).toEqual(["fixtures/wp2/inline.md"]);
+    expect(validated.diagnostics).toMatchObject([
+      {
+        code: "ctx.sourcePolicy.disallowed",
+        severity: "error",
+        url: "ctx://repo/path/fixtures/wp2/private/secret.md?lens=excerpt",
+      },
+    ]);
+  });
+
+  it("gives denied sourcePolicy prefixes precedence over allowed prefixes", () => {
+    const registry = registryWithResourceOverride({
+      sourcePolicy: {
+        allowedPathPrefixes: ["fixtures/wp2/", "fixtures/wp2/private/"],
+        deniedPathPrefixes: ["fixtures/wp2/private/"],
+      },
+    });
+    const validated = validateContextLinks(
+      scanMarkdown("[private](ctx://repo/path/fixtures/wp2/private/secret.md?lens=excerpt)").links,
+      registry,
+    );
+
+    expect(validated.valid).toBe(false);
+    expect(validated.links).toEqual([]);
+    expect(validated.diagnostics).toMatchObject([
+      {
+        code: "ctx.sourcePolicy.disallowed",
+        severity: "error",
+      },
+    ]);
+  });
+
+  it("applies sourcePolicy to normalized decoded repo/path ids", () => {
+    const registry = registryWithResourceOverride({
+      sourcePolicy: {
+        allowedPathPrefixes: ["fixtures/wp2/public/"],
+      },
+    });
+    const validated = validateContextLinks(
+      scanMarkdown("[escape](ctx://repo/path/fixtures/wp2/public%2F..%2Finline.md?lens=excerpt)")
+        .links,
+      registry,
+    );
+
+    expect(validated.valid).toBe(false);
+    expect(validated.links).toEqual([]);
+    expect(validated.diagnostics).toMatchObject([
+      {
+        code: "ctx.sourcePolicy.disallowed",
+        severity: "error",
+      },
+    ]);
+  });
+
+  it("treats decoded backslashes as sourcePolicy path separators", () => {
+    const registry = registryWithResourceOverride({
+      idPattern: undefined,
+      sourcePolicy: {
+        allowedPathPrefixes: ["fixtures/wp2/"],
+        deniedPathPrefixes: ["fixtures/wp2/private/"],
+      },
+    });
+    const validated = validateContextLinks(
+      scanMarkdown(
+        "[escape](ctx://repo/path/fixtures/wp2/public%5C..%5Cprivate%5Csecret.md?lens=excerpt)",
+      ).links,
+      registry,
+    );
+
+    expect(validated.valid).toBe(false);
+    expect(validated.links).toEqual([]);
+    expect(validated.diagnostics).toMatchObject([
+      {
+        code: "ctx.sourcePolicy.disallowed",
+        severity: "error",
+      },
+    ]);
+  });
+
+  it("keeps idPattern rejection before sourcePolicy rejection", () => {
+    const registry = registryWithResourceOverride({
+      sourcePolicy: {
+        allowedPathPrefixes: ["fixtures/wp2/"],
+        deniedPathPrefixes: ["fixtures/ms1/"],
+      },
+    });
+    const validated = validateContextLinks(
+      scanMarkdown("[bad](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt)").links,
+      registry,
+    );
+
+    expect(validated.valid).toBe(false);
+    expect(validated.links).toEqual([]);
+    expect(validated.diagnostics).toMatchObject([
+      {
+        code: "ctx.id.unsupported",
+        severity: "error",
+      },
+    ]);
+  });
+
   it.each([
     [
       "non-object policy",
@@ -257,6 +374,13 @@ function registryResourceFixture() {
     lenses: ["excerpt", "summary"],
     params: ["section"],
   };
+}
+
+function registryWithResourceOverride(override: Record<string, unknown>) {
+  return parseRegistry({
+    ...registryFixture(),
+    resources: [{ ...registryResourceFixture(), ...override }],
+  });
 }
 
 function contextLinkCandidate(overrides: Partial<ContextLinkCandidate>): ContextLinkCandidate {

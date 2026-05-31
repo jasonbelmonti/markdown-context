@@ -726,6 +726,82 @@ describe("CLI operator contract", () => {
     expect(output.lockfile.records).toEqual([]);
   });
 
+  it("does not emit artifacts or lockfile records when sourcePolicy rejects links", async () => {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-policy-"));
+    const taskPath = path.join(tempRoot, "policy-task.md");
+    const registryPath = path.join(tempRoot, "registry.json");
+    const lockfilePath = path.join(tempRoot, "context.lock.json");
+
+    try {
+      await writeFile(
+        taskPath,
+        "[private](ctx://repo/path/fixtures/ms1/context-source.md?lens=excerpt)",
+        "utf8",
+      );
+      await writeFile(
+        registryPath,
+        JSON.stringify(
+          {
+            schemaVersion: "markdown-context.registry.v0",
+            registryId: "policy-local",
+            registryVersion: "0.1.0",
+            resources: [
+              {
+                scheme: "ctx",
+                namespace: "repo",
+                kind: "path",
+                defaultLens: "excerpt",
+                lenses: ["excerpt"],
+                params: [],
+                sourcePolicy: {
+                  allowedPathPrefixes: ["fixtures/ms1/public/"],
+                },
+              },
+            ],
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+
+      const result = await runCliExpectingExit([
+        "dist/cli/index.js",
+        "resolve",
+        taskPath,
+        "--registry",
+        registryPath,
+        "--repo-root",
+        ".",
+        "--lockfile",
+        "--lockfile-out",
+        lockfilePath,
+        "--pretty",
+      ], 1);
+      const output = JSON.parse(result.stdout) as {
+        artifacts: unknown[];
+        diagnostics: Array<{ code: string; severity: string }>;
+        lockfile: { records: unknown[] };
+      };
+      const writtenLockfile = JSON.parse(await readFile(lockfilePath, "utf8")) as {
+        records: unknown[];
+      };
+
+      expect(result.stderr).toBe("");
+      expect(output.artifacts).toEqual([]);
+      expect(output.lockfile.records).toEqual([]);
+      expect(writtenLockfile.records).toEqual([]);
+      expect(output.diagnostics).toMatchObject([
+        {
+          code: "ctx.sourcePolicy.disallowed",
+          severity: "error",
+        },
+      ]);
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+
   it("keeps validation diagnostics visible when lockfile-out cannot be written", async () => {
     const tempRoot = await mkdtemp(path.join(tmpdir(), "markdown-context-cli-lockfile-fail-"));
     const blockingPath = path.join(tempRoot, "not-a-directory");
