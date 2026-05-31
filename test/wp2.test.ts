@@ -163,6 +163,75 @@ describe("BEL-1048 WP-2 scan and validation hardening", () => {
     );
     expect(hashRegistry(withPattern)).not.toBe(hashRegistry(withoutPattern));
   });
+
+  it("parses and normalizes registry sourcePolicy path-prefix arrays", () => {
+    const registry = parseRegistry({
+      ...registryFixture(),
+      resources: [
+        {
+          ...registryResourceFixture(),
+          sourcePolicy: {
+            allowedPathPrefixes: ["fixtures/wp2/public/", "fixtures/wp2/"],
+            deniedPathPrefixes: ["fixtures/wp2/private/", "fixtures/wp2/generated/"],
+          },
+        },
+      ],
+    });
+
+    expect(registry.resources[0]?.sourcePolicy).toEqual({
+      allowedPathPrefixes: ["fixtures/wp2/", "fixtures/wp2/public/"],
+      deniedPathPrefixes: ["fixtures/wp2/generated/", "fixtures/wp2/private/"],
+    });
+  });
+
+  it.each([
+    [
+      "non-object policy",
+      { sourcePolicy: "fixtures/wp2/" },
+      "Registry resource.sourcePolicy must be an object.",
+    ],
+    [
+      "missing policy arrays",
+      { sourcePolicy: {} },
+      "Registry resource.sourcePolicy must declare allowedPathPrefixes or deniedPathPrefixes.",
+    ],
+    [
+      "non-array allowed prefixes",
+      { sourcePolicy: { allowedPathPrefixes: "fixtures/wp2/" } },
+      "Registry resource.sourcePolicy.allowedPathPrefixes must be an array of strings.",
+    ],
+    [
+      "empty allowed prefix array",
+      { sourcePolicy: { allowedPathPrefixes: [] } },
+      "Registry resource.sourcePolicy.allowedPathPrefixes must contain at least one value.",
+    ],
+    [
+      "empty denied prefix",
+      { sourcePolicy: { deniedPathPrefixes: [""] } },
+      "Registry resource.sourcePolicy.deniedPathPrefixes must not contain empty strings.",
+    ],
+    [
+      "duplicate denied prefixes",
+      { sourcePolicy: { deniedPathPrefixes: ["fixtures/wp2/private/", "fixtures/wp2/private/"] } },
+      "Registry resource.sourcePolicy.deniedPathPrefixes must not contain duplicate values: fixtures/wp2/private/.",
+    ],
+    [
+      "non repo/path resource",
+      { namespace: "doc", kind: "section", sourcePolicy: { allowedPathPrefixes: ["docs/"] } },
+      "Registry resource.sourcePolicy is only supported for ctx://repo/path resources.",
+    ],
+  ])("rejects malformed sourcePolicy declarations with deterministic errors for %s", (
+    _label,
+    override,
+    expectedMessage,
+  ) => {
+    expect(() =>
+      parseRegistry({
+        ...registryFixture(),
+        resources: [{ ...registryResourceFixture(), ...override }],
+      }),
+    ).toThrow(expectedMessage);
+  });
 });
 
 async function fixtureRegistry() {

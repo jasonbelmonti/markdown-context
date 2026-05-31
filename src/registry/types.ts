@@ -14,9 +14,20 @@ export interface RegistryResourceIdentity {
 
 export interface RegistryResource extends RegistryResourceIdentity {
   idPattern?: string;
+  sourcePolicy?: RegistryResourceSourcePolicy;
   defaultLens: string;
   lenses: string[];
   params?: string[];
 }
 
 export interface RegistryIgnoredResource extends RegistryResourceIdentity {}
+
+export type RegistryResourceSourcePolicy =
+  | {
+      allowedPathPrefixes: string[];
+      deniedPathPrefixes?: string[];
+    }
+  | {
+      allowedPathPrefixes?: string[];
+      deniedPathPrefixes: string[];
+    };

@@ -226,6 +226,34 @@ describe("lockfile contract", () => {
     expect(hashRegistry(withIgnored)).not.toBe(hashRegistry(withoutIgnored));
   });
 
+  it("includes source policy in the canonical registry contract", () => {
+    const withoutPolicy = fixtureRegistry();
+    const withPolicy = parseRegistry({
+      schemaVersion: "markdown-context.registry.v0",
+      registryId: "ms1-local",
+      registryVersion: "0.1.0",
+      resources: [
+        {
+          scheme: "ctx",
+          namespace: "repo",
+          kind: "path",
+          defaultLens: "excerpt",
+          lenses: ["excerpt"],
+          params: [],
+          sourcePolicy: {
+            allowedPathPrefixes: ["fixtures/ms1/public/", "fixtures/ms1/"],
+            deniedPathPrefixes: ["fixtures/ms1/private/", "fixtures/ms1/generated/"],
+          },
+        },
+      ],
+    });
+
+    expect(serializeCanonicalRegistry(withPolicy)).toContain(
+      '"sourcePolicy":{"allowedPathPrefixes":["fixtures/ms1/","fixtures/ms1/public/"],"deniedPathPrefixes":["fixtures/ms1/generated/","fixtures/ms1/private/"]}',
+    );
+    expect(hashRegistry(withPolicy)).not.toBe(hashRegistry(withoutPolicy));
+  });
+
   it("builds lockfile records with explicit registry, source, artifact, and option provenance", () => {
     const registry = fixtureRegistry();
     const artifact = fixtureArtifact();

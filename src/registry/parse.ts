@@ -1,7 +1,12 @@
 import { readFile } from "node:fs/promises";
 
 import { registryResourceIdentityKey } from "./resource-identity.js";
-import type { Registry, RegistryIgnoredResource, RegistryResource } from "./types.js";
+import type {
+  Registry,
+  RegistryIgnoredResource,
+  RegistryResource,
+  RegistryResourceSourcePolicy,
+} from "./types.js";
 
 export async function loadRegistry(path: string): Promise<Registry> {
   return parseRegistry(JSON.parse(await readFile(path, "utf8")));
@@ -49,9 +54,18 @@ function parseResource(value: unknown): RegistryResource {
     throw new Error(`Registry resource.scheme must be ctx: ${scheme}.`);
   }
 
+  const namespace = stringValue(value.namespace, "resource.namespace").toLowerCase();
+  const kind = stringValue(value.kind, "resource.kind");
   const idPattern = optionalStringValue(value.idPattern, "resource.idPattern");
   if (idPattern !== undefined) {
     assertValidRegExp(idPattern, "resource.idPattern");
+  }
+
+  const sourcePolicy = parseOptionalSourcePolicy(value.sourcePolicy);
+  if (sourcePolicy !== undefined && (namespace !== "repo" || kind !== "path")) {
+    throw new Error(
+      "Registry resource.sourcePolicy is only supported for ctx://repo/path resources.",
+    );
   }
 
   const defaultLens = stringValue(value.defaultLens, "resource.defaultLens");
@@ -64,13 +78,55 @@ function parseResource(value: unknown): RegistryResource {
 
   return {
     scheme,
-    namespace: stringValue(value.namespace, "resource.namespace").toLowerCase(),
-    kind: stringValue(value.kind, "resource.kind"),
+    namespace,
+    kind,
     ...(idPattern !== undefined ? { idPattern } : {}),
+    ...(sourcePolicy !== undefined ? { sourcePolicy } : {}),
     defaultLens,
     lenses,
     ...(params !== undefined ? { params: uniqueStringArray(params, "resource.params") } : {}),
   };
+}
+
+function parseOptionalSourcePolicy(
+  value: unknown,
+): RegistryResourceSourcePolicy | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(value)) {
+    throw new Error("Registry resource.sourcePolicy must be an object.");
+  }
+
+  const allowedPathPrefixes = optionalNonEmptyUniqueStringArray(
+    value.allowedPathPrefixes,
+    "resource.sourcePolicy.allowedPathPrefixes",
+  );
+  const deniedPathPrefixes = optionalNonEmptyUniqueStringArray(
+    value.deniedPathPrefixes,
+    "resource.sourcePolicy.deniedPathPrefixes",
+  );
+
+  if (allowedPathPrefixes === undefined && deniedPathPrefixes === undefined) {
+    throw new Error(
+      "Registry resource.sourcePolicy must declare allowedPathPrefixes or deniedPathPrefixes.",
+    );
+  }
+
+  if (allowedPathPrefixes !== undefined && deniedPathPrefixes !== undefined) {
+    return { allowedPathPrefixes, deniedPathPrefixes };
+  }
+
+  if (allowedPathPrefixes !== undefined) {
+    return { allowedPathPrefixes };
+  }
+
+  if (deniedPathPrefixes !== undefined) {
+    return { deniedPathPrefixes };
+  }
+
+  throw new Error("Registry resource.sourcePolicy must declare a path-prefix policy.");
 }
 
 function parseIgnoredResources(value: unknown): RegistryIgnoredResource[] {
@@ -200,4 +256,15 @@ function nonEmptyUniqueStringArray(value: unknown, field: string): string[] {
   }
 
   return items;
+}
+
+function optionalNonEmptyUniqueStringArray(
+  value: unknown,
+  field: string,
+): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return nonEmptyUniqueStringArray(value, field);
 }
