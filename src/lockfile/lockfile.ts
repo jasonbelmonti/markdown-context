@@ -2,6 +2,7 @@ import type {
   Registry,
   RegistryIgnoredResource,
   RegistryResource,
+  RegistryResourceSourcePolicy,
 } from "../registry/registry.js";
 import { compareRegistryResourceIdentities } from "../registry/resource-identity.js";
 import type { CanonicalJsonObject } from "./canonical-json.js";
@@ -105,6 +106,26 @@ function canonicalRegistryResource(resource: RegistryResource): CanonicalJsonObj
 
   if (resource.idPattern !== undefined) {
     snapshot.idPattern = resource.idPattern;
+  }
+
+  if (resource.sourcePolicy !== undefined) {
+    snapshot.sourcePolicy = canonicalRegistryResourceSourcePolicy(resource.sourcePolicy);
+  }
+
+  return snapshot;
+}
+
+function canonicalRegistryResourceSourcePolicy(
+  sourcePolicy: RegistryResourceSourcePolicy,
+): CanonicalJsonObject {
+  const snapshot: CanonicalJsonObject = {};
+
+  if (sourcePolicy.allowedPathPrefixes !== undefined) {
+    snapshot.allowedPathPrefixes = [...sourcePolicy.allowedPathPrefixes].sort(compareCodeUnits);
+  }
+
+  if (sourcePolicy.deniedPathPrefixes !== undefined) {
+    snapshot.deniedPathPrefixes = [...sourcePolicy.deniedPathPrefixes].sort(compareCodeUnits);
   }
 
   return snapshot;
