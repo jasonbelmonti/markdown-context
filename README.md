@@ -124,8 +124,9 @@ When `sourcePolicy` rejects a link, validation emits
 and `resolve` does not read the source, emit an artifact, or write a lockfile
 record for that link. The policy is a path-prefix read boundary for trusted
 registry operators reviewing potentially untrusted Markdown. It is separate from
-the fixed resolver source-size limit and does not provide concurrent filesystem
-mutation protection.
+the fixed resolver source-size limit and the resolver's containment checks; it
+constrains which ids may be resolved, not every way an in-root file may be
+named by the local filesystem.
 
 The `repo/path` resolver rejects source files larger than 1048576 bytes before
 reading or hashing source content. Over-limit sources emit
@@ -134,6 +135,16 @@ lockfile record for that link. Accepted files preserve existing provenance
 semantics: source identity and lockfile `sourceHash` values are SHA-256 hashes of
 the full normalized source text, while emitted excerpt artifacts remain bounded
 to 4096 UTF-8 bytes.
+
+During source resolution, the resolver realpaths the configured repository root
+and requested candidate, opens the candidate for read, revalidates that the
+current contained path still names the opened filesystem object, then reads from
+that opened handle. If the path mutates outside `--repo-root` or changes to a
+different object during resolution, `resolve` emits a resolver diagnostic and no
+artifact or lockfile record for that link. This narrows local symlink and
+directory-replacement races; it is not a general OS sandbox and does not prevent
+hard-link aliases, concurrent writes to the same opened file, or broad in-root
+reads allowed by the selected registry and repo root.
 
 `ignoredResources` is optional and non-resolving. It lets one document contain
 links from another `ctx://` ecosystem, such as `ctx://trace/entity/...`, without

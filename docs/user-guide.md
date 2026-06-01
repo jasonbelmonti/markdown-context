@@ -207,8 +207,17 @@ which repository paths a valid `ctx://repo/path/...` link may name before any
 source read occurs. Choose `--repo-root` intentionally; it defines the repository
 tree that accepted ids can resolve within. The resolver still enforces
 repo-root containment for accepted ids, but `sourcePolicy` is separate from the
-fixed resolver source-size limit and does not protect against concurrent
-filesystem changes during resolution.
+fixed resolver source-size limit and the resolver's containment checks.
+
+For each accepted source, the resolver realpaths the configured repository root
+and requested candidate, opens the candidate for read, revalidates that the
+current contained path still names the opened filesystem object, then reads from
+that opened handle. If the path mutates outside `--repo-root` or changes to a
+different object during resolution, `resolve` emits a resolver diagnostic and
+does not emit an artifact or lockfile record for that link. This narrows local
+symlink and directory-replacement races; it is not a general OS sandbox and does
+not prevent hard-link aliases, concurrent writes to the same opened file, or
+broad in-root reads allowed by the selected registry and repo root.
 
 ## 7. Write a Lockfile
 
@@ -269,8 +278,8 @@ fail-closed scan -> validate -> resolve flow.
 | `ctx.param.unsupported` | Remove the query parameter or add it to the registry resource `params`. |
 | `ctx.sourcePolicy.disallowed` | The `repo/path` id is outside the registry `sourcePolicy`; update the link or policy. |
 | `ctx.lens.unsupported` | Use a lens declared in the registry resource `lenses`. |
-| `ctx.repoPath.unresolved` | Confirm the path exists under `--repo-root`. |
-| `ctx.repoPath.outsideRoot` | The path resolves outside `--repo-root`; it will not be read. |
+| `ctx.repoPath.unresolved` | Confirm the path exists under `--repo-root` and remains stable while resolution runs. |
+| `ctx.repoPath.outsideRoot` | The path resolves or mutates outside `--repo-root`; it will not be read. |
 | `ctx.repoPath.sourceTooLarge` | The source file exceeds 1048576 bytes; reduce the file or point the link to a smaller source. |
 
 ## 10. Current Scope Boundary
@@ -283,10 +292,11 @@ The completed MVP is intentionally local and read-only:
   lockfile provenance;
 - supported source boundary: optional registry `sourcePolicy` path-prefix checks
   before resolver reads, plus a fixed resolver source-size limit before full
-  source read and hashing;
+  source read and hashing, plus post-open containment validation before source
+  bytes are trusted;
 - deferred: mission aggregation, `suggest-links`, `insert-link`, MCP adapters,
   OS handlers, live connectors, network-backed resolvers, browser automation,
-  package publication, write-side mutation flows, and TOCTOU-resistant
-  containment.
+  package publication, write-side mutation flows, general filesystem sandboxing,
+  hard-link alias controls, and concurrent-write snapshot isolation.
 
 Follow-up hardening items are tracked separately from this user workflow.
