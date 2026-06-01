@@ -1,4 +1,12 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -9,7 +17,10 @@ import { hashCanonicalJson, hashRegistry, hashUtf8Bytes } from "../src/index.js"
 import { parseRegistry, validateContextLinks } from "../src/registry/registry.js";
 import { resolveRepoPathLink } from "../src/resolvers/repo-path.js";
 import { REPO_PATH_EXCERPT_MAX_BYTES } from "../src/resolvers/repo-path/artifact.js";
-import { REPO_PATH_SOURCE_MAX_BYTES } from "../src/resolvers/repo-path/source.js";
+import {
+  readRepoPathSource,
+  REPO_PATH_SOURCE_MAX_BYTES,
+} from "../src/resolvers/repo-path/source.js";
 
 describe("repo/path resolver boundary", () => {
   it("resolves the valid repo/path link to a bounded lens artifact", async () => {
@@ -397,6 +408,42 @@ describe("repo/path resolver boundary", () => {
           severity: "error",
         },
       ]);
+    });
+  });
+
+  it("rejects repo/path sources that mutate outside repoRoot after containment resolution", async () => {
+    await withTempRepo(async (repoRoot, tempRoot) => {
+      const sourceDir = path.join(repoRoot, "docs");
+      const parkedSourceDir = path.join(repoRoot, "docs-original");
+      const outsideDir = path.join(tempRoot, "outside-docs");
+
+      await mkdir(sourceDir);
+      await mkdir(outsideDir);
+      await writeFile(path.join(sourceDir, "source.md"), "# Inside\n", "utf8");
+      await writeFile(
+        path.join(outsideDir, "source.md"),
+        "# Outside\n\nOUTSIDE-MUST-NOT-APPEAR\n",
+        "utf8",
+      );
+
+      const source = await readRepoPathSource(
+        repoRoot,
+        validatedRepoPathLink("docs/source.md"),
+        {
+          beforeOpen: async () => {
+            await rename(sourceDir, parkedSourceDir);
+            await symlink(outsideDir, sourceDir, "dir");
+          },
+        },
+      );
+
+      expect(source).toMatchObject({
+        diagnostic: {
+          code: "ctx.repoPath.outsideRoot",
+          severity: "error",
+        },
+      });
+      expect("text" in source).toBe(false);
     });
   });
 
