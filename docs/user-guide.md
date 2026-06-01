@@ -51,6 +51,10 @@ Create a JSON registry that declares which context links are allowed:
       "scheme": "ctx",
       "namespace": "repo",
       "kind": "path",
+      "sourcePolicy": {
+        "allowedPathPrefixes": ["docs/", "fixtures/ms1/"],
+        "deniedPathPrefixes": ["docs/private/"]
+      },
       "defaultLens": "excerpt",
       "lenses": ["excerpt"],
       "params": []
@@ -79,9 +83,26 @@ Resource fields:
 | `namespace` | Yes | `repo` for the current offline resolver. |
 | `kind` | Yes | `path` for the current offline resolver. |
 | `idPattern` | No | Optional regular expression applied to the URL id. |
+| `sourcePolicy` | No | Optional path-prefix policy for `repo/path` ids. |
 | `defaultLens` | Yes | Used when a link omits `lens`. Must appear in `lenses`. |
 | `lenses` | Yes | Non-empty list of allowed lenses. |
 | `params` | No | Closed list of allowed non-`lens` query parameters. |
+
+`sourcePolicy` is only supported on `ctx://repo/path` resources. It accepts
+`allowedPathPrefixes` and `deniedPathPrefixes`; at least one list must be
+present, each list must be non-empty when provided, and duplicate prefixes are
+rejected when the registry is loaded.
+
+Use `allowedPathPrefixes` to limit valid ids to an intentional source set. Use
+`deniedPathPrefixes` to exclude known-sensitive subtrees. If both lists match a
+link id, the denied prefix wins. If `sourcePolicy` is omitted, the resolver keeps
+the existing trusted-local behavior: any link that passes resource, lens, params,
+optional `idPattern`, and repo-root containment checks can be resolved.
+
+`sourcePolicy` is evaluated during validation before resolver dispatch. A
+rejected link produces `ctx.sourcePolicy.disallowed`, is excluded from validated
+links, and does not cause `resolve` to read the source, emit an artifact, or write
+a lockfile record.
 
 Ignored-resource fields:
 
@@ -172,6 +193,15 @@ Each lens artifact includes:
 Source-derived content is data for review. Do not treat it as operating
 instructions for an agent.
 
+The Markdown file being scanned should still be treated as untrusted input unless
+the operator controls it. A registry `sourcePolicy` reduces that risk by limiting
+which repository paths a valid `ctx://repo/path/...` link may name before any
+source read occurs. Choose `--repo-root` intentionally; it defines the repository
+tree that accepted ids can resolve within. The resolver still enforces
+repo-root containment for accepted ids, but `sourcePolicy` does not add
+source-size limits, streaming reads, or protection against concurrent filesystem
+changes during resolution.
+
 ## 7. Write a Lockfile
 
 To write lockfile JSON to a separate path:
@@ -229,6 +259,7 @@ fail-closed scan -> validate -> resolve flow.
 | `ctx.namespace.unsupported` | The registry does not declare the link namespace. |
 | `ctx.kind.unsupported` | The registry does not declare the link kind. |
 | `ctx.param.unsupported` | Remove the query parameter or add it to the registry resource `params`. |
+| `ctx.sourcePolicy.disallowed` | The `repo/path` id is outside the registry `sourcePolicy`; update the link or policy. |
 | `ctx.lens.unsupported` | Use a lens declared in the registry resource `lenses`. |
 | `ctx.repoPath.unresolved` | Confirm the path exists under `--repo-root`. |
 | `ctx.repoPath.outsideRoot` | The path resolves outside `--repo-root`; it will not be read. |
@@ -241,8 +272,11 @@ The completed MVP is intentionally local and read-only:
 - supported resolver: offline `ctx://repo/path/...`;
 - supported output: structured JSON, bounded lens artifacts, and optional
   lockfile provenance;
+- supported source boundary: optional registry `sourcePolicy` path-prefix checks
+  before resolver reads;
 - deferred: mission aggregation, `suggest-links`, `insert-link`, MCP adapters,
   OS handlers, live connectors, network-backed resolvers, browser automation,
-  package publication, and write-side mutation flows.
+  package publication, write-side mutation flows, source-size or streaming read
+  policy, and TOCTOU-resistant containment.
 
 Follow-up hardening items are tracked separately from this user workflow.
