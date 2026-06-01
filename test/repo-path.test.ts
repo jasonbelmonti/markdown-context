@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 
 import type { SourceRange, ValidatedContextLink } from "../src/core/types.js";
 import { scanMarkdown } from "../src/core/scan.js";
-import { hashCanonicalJson, hashRegistry } from "../src/index.js";
+import { hashCanonicalJson, hashRegistry, hashUtf8Bytes } from "../src/index.js";
 import { parseRegistry, validateContextLinks } from "../src/registry/registry.js";
 import { resolveRepoPathLink } from "../src/resolvers/repo-path.js";
+import { REPO_PATH_EXCERPT_MAX_BYTES } from "../src/resolvers/repo-path/artifact.js";
+import { REPO_PATH_SOURCE_MAX_BYTES } from "../src/resolvers/repo-path/source.js";
 
 describe("repo/path resolver boundary", () => {
   it("resolves the valid repo/path link to a bounded lens artifact", async () => {
@@ -78,7 +80,8 @@ describe("repo/path resolver boundary", () => {
       },
       outputOptions: {
         artifactFormat: "json",
-        excerptMaxBytes: 4096,
+        excerptMaxBytes: REPO_PATH_EXCERPT_MAX_BYTES,
+        sourceMaxBytes: REPO_PATH_SOURCE_MAX_BYTES,
       },
     });
     expect(record?.artifactPath).toMatch(
@@ -241,8 +244,89 @@ describe("repo/path resolver boundary", () => {
       expect(resolved.diagnostics).toEqual([]);
       expect(artifact?.content.text).toContain("[markdown-context: excerpt truncated]");
       expect(artifact?.content.text).not.toContain("TAIL-MUST-NOT-APPEAR");
-      expect(Buffer.byteLength(artifact?.content.text ?? "", "utf8")).toBeLessThanOrEqual(4096);
+      expect(Buffer.byteLength(artifact?.content.text ?? "", "utf8")).toBeLessThanOrEqual(
+        REPO_PATH_EXCERPT_MAX_BYTES,
+      );
       expect(artifact?.contentHash).not.toBe(artifact?.sourceIdentity.contentHash);
+    });
+  });
+
+  it("resolves repo/path sources exactly at the source-size limit", async () => {
+    await withTempRepo(async (repoRoot) => {
+      const sourceText = "A".repeat(REPO_PATH_SOURCE_MAX_BYTES);
+
+      await writeFile(path.join(repoRoot, "threshold.md"), sourceText, "utf8");
+
+      const artifact = await resolveSingleRepoPath(
+        "[threshold](ctx://repo/path/threshold.md?lens=excerpt)",
+        await fixtureRegistry(),
+        repoRoot,
+      );
+
+      expect(Buffer.byteLength(sourceText, "utf8")).toBe(REPO_PATH_SOURCE_MAX_BYTES);
+      expect(artifact.sourceIdentity.contentHash).toBe(hashUtf8Bytes(sourceText));
+      expect(artifact.content.text).toContain("[markdown-context: excerpt truncated]");
+      expect(Buffer.byteLength(artifact.content.text, "utf8")).toBeLessThanOrEqual(
+        REPO_PATH_EXCERPT_MAX_BYTES,
+      );
+    });
+  });
+
+  it("rejects repo/path sources above the source-size limit before artifact rendering", async () => {
+    await withTempRepo(async (repoRoot) => {
+      const registry = await fixtureRegistry();
+      const sourceText = "A".repeat(REPO_PATH_SOURCE_MAX_BYTES + 1);
+
+      await writeFile(path.join(repoRoot, "too-large.md"), sourceText, "utf8");
+
+      const resolved = await resolveRepoPathLink([validatedRepoPathLink("too-large.md")], {
+        repoRoot,
+        lockfile: { registry },
+      });
+
+      expect(Buffer.byteLength(sourceText, "utf8")).toBe(REPO_PATH_SOURCE_MAX_BYTES + 1);
+      expect(resolved.artifacts).toEqual([]);
+      expect(resolved.lockfile?.records).toEqual([]);
+      expect(resolved.diagnostics).toMatchObject([
+        {
+          code: "ctx.repoPath.sourceTooLarge",
+          message: `Repo path source is ${REPO_PATH_SOURCE_MAX_BYTES + 1} bytes, exceeding the ${REPO_PATH_SOURCE_MAX_BYTES} byte source-size limit.`,
+          severity: "error",
+        },
+      ]);
+    });
+  });
+
+  it("applies the source-size limit in UTF-8 bytes", async () => {
+    await withTempRepo(async (repoRoot) => {
+      const exactUtf8Text = "\u00e9".repeat(REPO_PATH_SOURCE_MAX_BYTES / 2);
+      const overLimitUtf8Text = `${"A".repeat(REPO_PATH_SOURCE_MAX_BYTES - 1)}\u00e9`;
+
+      await writeFile(path.join(repoRoot, "utf8-threshold.md"), exactUtf8Text, "utf8");
+      await writeFile(path.join(repoRoot, "utf8-over.md"), overLimitUtf8Text, "utf8");
+
+      const accepted = await resolveRepoPathLink(
+        [validatedRepoPathLink("utf8-threshold.md")],
+        { repoRoot },
+      );
+      const rejected = await resolveRepoPathLink(
+        [validatedRepoPathLink("utf8-over.md")],
+        { repoRoot },
+      );
+
+      expect(Buffer.byteLength(exactUtf8Text, "utf8")).toBe(REPO_PATH_SOURCE_MAX_BYTES);
+      expect(Buffer.byteLength(overLimitUtf8Text, "utf8")).toBe(
+        REPO_PATH_SOURCE_MAX_BYTES + 1,
+      );
+      expect(accepted.diagnostics).toEqual([]);
+      expect(accepted.artifacts).toHaveLength(1);
+      expect(rejected.artifacts).toEqual([]);
+      expect(rejected.diagnostics).toMatchObject([
+        {
+          code: "ctx.repoPath.sourceTooLarge",
+          severity: "error",
+        },
+      ]);
     });
   });
 
