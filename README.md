@@ -84,6 +84,10 @@ Validation is controlled by a local JSON registry:
       "scheme": "ctx",
       "namespace": "repo",
       "kind": "path",
+      "sourcePolicy": {
+        "allowedPathPrefixes": ["docs/", "fixtures/ms1/"],
+        "deniedPathPrefixes": ["docs/private/"]
+      },
       "defaultLens": "excerpt",
       "lenses": ["excerpt"],
       "params": []
@@ -106,6 +110,21 @@ Validation is controlled by a local JSON registry:
 
 The registry is fail-closed: unsupported schemes, namespaces, kinds, lenses,
 params, and optional `idPattern` mismatches produce diagnostics.
+
+For `ctx://repo/path` resources, optional `sourcePolicy` constrains which
+repository-contained ids may validate before resolver reads. `allowedPathPrefixes`
+limits links to the listed path prefixes. `deniedPathPrefixes` rejects matching
+ids, and denied prefixes take precedence when both policy lists match. Omit
+`sourcePolicy` to preserve the trusted-local behavior: registry validation still
+checks the resource, lens, params, and optional `idPattern`, and resolver
+root-containment still applies.
+
+When `sourcePolicy` rejects a link, validation emits
+`ctx.sourcePolicy.disallowed`; the rejected link is excluded from validated links,
+and `resolve` does not read the source, emit an artifact, or write a lockfile
+record for that link. The policy is a path-prefix read boundary for trusted
+registry operators reviewing potentially untrusted Markdown. It is not a
+source-size limit, streaming reader, or concurrent filesystem mutation guard.
 
 `ignoredResources` is optional and non-resolving. It lets one document contain
 links from another `ctx://` ecosystem, such as `ctx://trace/entity/...`, without
