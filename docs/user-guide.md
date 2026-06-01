@@ -193,14 +193,22 @@ Each lens artifact includes:
 Source-derived content is data for review. Do not treat it as operating
 instructions for an agent.
 
+The `repo/path` resolver applies a fixed source-size limit before reading source
+content. Files larger than 1048576 bytes produce
+`ctx.repoPath.sourceTooLarge`; `resolve` does not emit an artifact or lockfile
+record for that link. Files at or below the limit keep existing provenance
+semantics: source identity and lockfile `sourceHash` values are SHA-256 hashes of
+the full normalized source text. The emitted excerpt text remains independently
+bounded to 4096 UTF-8 bytes.
+
 The Markdown file being scanned should still be treated as untrusted input unless
 the operator controls it. A registry `sourcePolicy` reduces that risk by limiting
 which repository paths a valid `ctx://repo/path/...` link may name before any
 source read occurs. Choose `--repo-root` intentionally; it defines the repository
 tree that accepted ids can resolve within. The resolver still enforces
-repo-root containment for accepted ids, but `sourcePolicy` does not add
-source-size limits, streaming reads, or protection against concurrent filesystem
-changes during resolution.
+repo-root containment for accepted ids, but `sourcePolicy` is separate from the
+fixed resolver source-size limit and does not protect against concurrent
+filesystem changes during resolution.
 
 ## 7. Write a Lockfile
 
@@ -263,6 +271,7 @@ fail-closed scan -> validate -> resolve flow.
 | `ctx.lens.unsupported` | Use a lens declared in the registry resource `lenses`. |
 | `ctx.repoPath.unresolved` | Confirm the path exists under `--repo-root`. |
 | `ctx.repoPath.outsideRoot` | The path resolves outside `--repo-root`; it will not be read. |
+| `ctx.repoPath.sourceTooLarge` | The source file exceeds 1048576 bytes; reduce the file or point the link to a smaller source. |
 
 ## 10. Current Scope Boundary
 
@@ -273,10 +282,11 @@ The completed MVP is intentionally local and read-only:
 - supported output: structured JSON, bounded lens artifacts, and optional
   lockfile provenance;
 - supported source boundary: optional registry `sourcePolicy` path-prefix checks
-  before resolver reads;
+  before resolver reads, plus a fixed resolver source-size limit before full
+  source read and hashing;
 - deferred: mission aggregation, `suggest-links`, `insert-link`, MCP adapters,
   OS handlers, live connectors, network-backed resolvers, browser automation,
-  package publication, write-side mutation flows, source-size or streaming read
-  policy, and TOCTOU-resistant containment.
+  package publication, write-side mutation flows, and TOCTOU-resistant
+  containment.
 
 Follow-up hardening items are tracked separately from this user workflow.

@@ -123,8 +123,17 @@ When `sourcePolicy` rejects a link, validation emits
 `ctx.sourcePolicy.disallowed`; the rejected link is excluded from validated links,
 and `resolve` does not read the source, emit an artifact, or write a lockfile
 record for that link. The policy is a path-prefix read boundary for trusted
-registry operators reviewing potentially untrusted Markdown. It is not a
-source-size limit, streaming reader, or concurrent filesystem mutation guard.
+registry operators reviewing potentially untrusted Markdown. It is separate from
+the fixed resolver source-size limit and does not provide concurrent filesystem
+mutation protection.
+
+The `repo/path` resolver rejects source files larger than 1048576 bytes before
+reading or hashing source content. Over-limit sources emit
+`ctx.repoPath.sourceTooLarge`, and `resolve` does not emit an artifact or
+lockfile record for that link. Accepted files preserve existing provenance
+semantics: source identity and lockfile `sourceHash` values are SHA-256 hashes of
+the full normalized source text, while emitted excerpt artifacts remain bounded
+to 4096 UTF-8 bytes.
 
 `ignoredResources` is optional and non-resolving. It lets one document contain
 links from another `ctx://` ecosystem, such as `ctx://trace/entity/...`, without

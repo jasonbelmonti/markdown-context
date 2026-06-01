@@ -5,6 +5,7 @@ import { createContextLockfileRecord } from "../../lockfile/lockfile.js";
 import type { ContextLockfileRecord, Sha256Hash } from "../../lockfile/types.js";
 import type { Registry } from "../../registry/registry.js";
 import { REPO_PATH_EXCERPT_MAX_BYTES } from "./artifact.js";
+import { REPO_PATH_SOURCE_MAX_BYTES } from "./source.js";
 
 const ARTIFACT_PATH_PREFIX = ".markdown-context/artifacts/repo-path";
 
@@ -39,5 +40,6 @@ function repoPathOutputOptions(): CanonicalJsonObject {
   return {
     artifactFormat: "json",
     excerptMaxBytes: REPO_PATH_EXCERPT_MAX_BYTES,
+    sourceMaxBytes: REPO_PATH_SOURCE_MAX_BYTES,
   };
 }

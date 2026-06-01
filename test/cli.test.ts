@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
 import { stableJson } from "../src/cli/json.js";
 import { hashCanonicalJson, hashUtf8Bytes, serializeCanonicalJson } from "../src/index.js";
 import type { ContextLockfile, RepoPathLensArtifact } from "../src/index.js";
+import { REPO_PATH_EXCERPT_MAX_BYTES } from "../src/resolvers/repo-path/artifact.js";
+import { REPO_PATH_SOURCE_MAX_BYTES } from "../src/resolvers/repo-path/source.js";
 
 const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 
@@ -391,7 +393,8 @@ describe("CLI operator contract", () => {
       ),
       outputOptions: {
         artifactFormat: "json",
-        excerptMaxBytes: 4096,
+        excerptMaxBytes: REPO_PATH_EXCERPT_MAX_BYTES,
+        sourceMaxBytes: REPO_PATH_SOURCE_MAX_BYTES,
       },
       sourceHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       sourceIdentity: {
@@ -459,7 +462,8 @@ describe("CLI operator contract", () => {
         artifactPath: `.markdown-context/artifacts/repo-path/${firstRecord.artifactHash.slice("sha256:".length)}.json`,
         outputOptions: {
           artifactFormat: "json",
-          excerptMaxBytes: 4096,
+          excerptMaxBytes: REPO_PATH_EXCERPT_MAX_BYTES,
+          sourceMaxBytes: REPO_PATH_SOURCE_MAX_BYTES,
         },
         registryHash: expect.stringMatching(SHA256_PATTERN),
         sourceHash: expect.stringMatching(SHA256_PATTERN),

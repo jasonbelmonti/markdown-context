@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -12,6 +12,8 @@ import { isOutsideBasePath } from "../../core/source-path.js";
 type RepoPathResolution =
   | { path: string }
   | { diagnosticCode: "ctx.repoPath.outsideRoot" | "ctx.repoPath.unresolved"; message: string };
+
+export const REPO_PATH_SOURCE_MAX_BYTES = 1024 * 1024;
 
 export interface RepoPathSource {
   text: string;
@@ -34,6 +36,11 @@ export async function readRepoPathSource(
         url: link.url,
       },
     };
+  }
+
+  const sourceSizeDiagnostic = await validateRepoPathSourceSize(resolvedPath.path, link);
+  if (sourceSizeDiagnostic !== undefined) {
+    return { diagnostic: sourceSizeDiagnostic };
   }
 
   let rawText: string;
@@ -65,6 +72,33 @@ function unresolvedRepoPathDiagnostic(
       url: link.url,
     },
   };
+}
+
+async function validateRepoPathSourceSize(
+  filePath: string,
+  link: ValidatedContextLink,
+): Promise<ContextDiagnostic | undefined> {
+  try {
+    const sourceStats = await stat(filePath);
+
+    if (!sourceStats.isFile()) {
+      return unresolvedRepoPathDiagnostic(link).diagnostic;
+    }
+
+    if (sourceStats.size > REPO_PATH_SOURCE_MAX_BYTES) {
+      return {
+        code: "ctx.repoPath.sourceTooLarge",
+        message: `Repo path source is ${sourceStats.size} bytes, exceeding the ${REPO_PATH_SOURCE_MAX_BYTES} byte source-size limit.`,
+        severity: "error",
+        sourceRange: link.sourceRange,
+        url: link.url,
+      };
+    }
+
+    return undefined;
+  } catch {
+    return unresolvedRepoPathDiagnostic(link).diagnostic;
+  }
 }
 
 function buildRepoPathSourceIdentity(
