@@ -202,12 +202,14 @@ the full normalized source text. The emitted excerpt text remains independently
 bounded to 4096 UTF-8 bytes.
 
 The Markdown file being scanned should still be treated as untrusted input unless
-the operator controls it. A registry `sourcePolicy` reduces that risk by limiting
-which repository paths a valid `ctx://repo/path/...` link may name before any
-source read occurs. Choose `--repo-root` intentionally; it defines the repository
-tree that accepted ids can resolve within. The resolver still enforces
-repo-root containment for accepted ids, but `sourcePolicy` is separate from the
-fixed resolver source-size limit and the resolver's containment checks.
+the operator controls it. Run `resolve` only on Markdown whose
+`ctx://repo/path/...` ids you are willing to let read from the selected root, or
+configure a registry `sourcePolicy` that limits those ids before any source read
+occurs. Choose the narrowest practical `--repo-root`; it defines the repository
+tree that accepted ids can resolve within. The resolver still enforces repo-root
+containment for accepted ids, but root containment is not a substitute for
+`sourcePolicy` when processing untrusted Markdown. `sourcePolicy` is separate
+from the fixed resolver source-size limit and the resolver's containment checks.
 
 For each accepted source, the resolver realpaths the configured repository root
 and requested candidate, opens the candidate for read, revalidates that the
